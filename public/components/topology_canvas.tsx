@@ -1,5 +1,8 @@
 import React, { useRef, useEffect } from 'react';
-import * as d3 from 'd3';
+import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, forceX, forceY } from 'd3-force';
+import { zoom, zoomIdentity, ZoomTransform } from 'd3-zoom';
+import { quadtree } from 'd3-quadtree';
+import { select } from 'd3-selection';
 import type { TopologyGraph, TopologyNode, TopologyLink } from '../../common';
 import { DEVICE_TYPE_CONFIG, STATUS_COLORS } from '../../common';
 
@@ -9,12 +12,25 @@ interface Props {
 }
 
 interface SimNode extends TopologyNode { x: number; y: number; vx: number; vy: number; fx: number | null; fy: number | null; }
-interface SimLink extends TopologyLink { source: SimNode | string; target: SimNode | string; }
+interface SimLink extends Omit<TopologyLink, 'source' | 'target'> { source: SimNode | string; target: SimNode | string; }
 
 const R = 20;
+const ROLE_LAYER: Record<string, number> = { core: 0, distribution: 1, access: 2, server: 3 };
+const LAYER_COUNT = 4;
+
+type SavedPos = { x: number; y: number; fx: number | null; fy: number | null };
 
 export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeClick, selectedNodeId }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const nodesRef = useRef<Map<string, SavedPos>>(new Map());
+  const selectedNodeRef = useRef<string | null>(selectedNodeId);
+  const drawRef = useRef<(() => void) | null>(null);
+
+  // Lightweight effect: update selection highlight without re-running the simulation
+  useEffect(() => {
+    selectedNodeRef.current = selectedNodeId;
+    drawRef.current?.();
+  }, [selectedNodeId]);
 
   useEffect(() => {
     if (!canvasRef.current || !graph.nodes.length) return;
@@ -27,20 +43,43 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
     canvas.style.width = `${width}px`; canvas.style.height = `${height}px`;
     ctx.scale(dpr, dpr);
 
-    const nodes: SimNode[] = graph.nodes.map(n => ({ ...n, x: width / 2 + (Math.random() - .5) * 200, y: height / 2 + (Math.random() - .5) * 200, vx: 0, vy: 0, fx: null, fy: null }));
+    const nodes: SimNode[] = graph.nodes.map(n => {
+      const saved = nodesRef.current.get(n.id);
+      return {
+        ...n,
+        x:  saved?.x  ?? (width / 2 + (Math.random() - 0.5) * 200),
+        y:  saved?.y  ?? (height / 2 + (Math.random() - 0.5) * 200),
+        vx: 0, vy: 0,
+        fx: saved?.fx ?? null,
+        fy: saved?.fy ?? null,
+      };
+    });
     const links: SimLink[] = graph.links.map(l => ({ ...l }));
 
-    let transform = d3.zoomIdentity;
+    let transform = zoomIdentity;
     let hovered: SimNode | null = null;
     let dragged: SimNode | null = null;
 
-    const sim = d3.forceSimulation<SimNode>(nodes)
-      .force('link', d3.forceLink<SimNode, SimLink>(links).id(d => d.id).distance(120).strength(0.5))
-      .force('charge', d3.forceManyBody().strength(-400).distanceMax(500))
-      .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide<SimNode>().radius(R + 10))
+    const layerY = (node: SimNode) =>
+      height * (0.15 + ((ROLE_LAYER[node.role ?? ''] ?? 1) / (LAYER_COUNT - 1)) * 0.70);
+
+    const sim = forceSimulation<SimNode>(nodes)
+      .force('link', forceLink<SimNode, SimLink>(links).id((d: SimNode) => d.id).distance(120).strength(0.5))
+      .force('charge', forceManyBody().strength(-400).distanceMax(500))
+      .force('center', forceCenter(width / 2, height / 2))
+      .force('collision', forceCollide<SimNode>().radius(R + 10))
+      .force('y', forceY<SimNode>((d: SimNode) => layerY(d)).strength(0.4))
+      .force('x', forceX<SimNode>(width / 2).strength(0.05))
       .alphaDecay(0.02)
-      .on('tick', draw);
+      .on('tick', draw)
+      .on('end', () => {
+        for (const node of nodes) {
+          node.fx = node.x;
+          node.fy = node.y;
+          nodesRef.current.set(node.id, { x: node.x, y: node.y, fx: node.x, fy: node.y });
+        }
+        draw();
+      });
 
     function draw() {
       ctx!.save(); ctx!.clearRect(0, 0, width, height);
@@ -60,7 +99,7 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
       for (const node of nodes) {
         if (!node.x || !node.y) continue;
         const cfg = DEVICE_TYPE_CONFIG[node.type] || DEVICE_TYPE_CONFIG.unknown;
-        const sel = node.id === selectedNodeId, hov = node === hovered;
+        const sel = node.id === selectedNodeRef.current, hov = node === hovered;
 
         ctx!.beginPath(); ctx!.arc(node.x, node.y, R, 0, 2 * Math.PI);
         ctx!.fillStyle = cfg.color; ctx!.globalAlpha = hov || sel ? 1 : 0.85; ctx!.fill();
@@ -90,27 +129,35 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
       ctx!.restore();
     }
 
-    const qt = () => d3.quadtree<SimNode>().x(d => d.x).y(d => d.y).addAll(nodes);
+    drawRef.current = draw;
+
+    const qt = () => quadtree<SimNode>().x((d: SimNode) => d.x).y((d: SimNode) => d.y).addAll(nodes);
     function nodeAt(px: number, py: number) {
       const x = (px - transform.x) / transform.k, y = (py - transform.y) / transform.k;
       return qt().find(x, y, R + 5) || null;
     }
 
-    d3.select(canvas).call(d3.zoom<HTMLCanvasElement, unknown>().scaleExtent([0.1, 4]).on('zoom', e => { transform = e.transform; draw(); }));
+    select(canvas).call(zoom<HTMLCanvasElement, unknown>().scaleExtent([0.1, 4]).on('zoom', (e: { transform: ZoomTransform }) => { transform = e.transform; draw(); }));
 
     canvas.addEventListener('mousemove', e => {
       const r = canvas.getBoundingClientRect();
       const n = nodeAt(e.clientX - r.left, e.clientY - r.top);
-      hovered = n; canvas.style.cursor = n ? 'pointer' : 'grab';
+      hovered = n; canvas.style.cursor = dragged ? 'grabbing' : (n ? 'pointer' : 'grab');
       if (dragged) { dragged.fx = (e.clientX - r.left - transform.x) / transform.k; dragged.fy = (e.clientY - r.top - transform.y) / transform.k; }
       draw();
     });
     canvas.addEventListener('click', e => { const r = canvas.getBoundingClientRect(); const n = nodeAt(e.clientX - r.left, e.clientY - r.top); if (n) onNodeClick(n.id); });
-    canvas.addEventListener('mousedown', e => { const r = canvas.getBoundingClientRect(); const n = nodeAt(e.clientX - r.left, e.clientY - r.top); if (n) { dragged = n; n.fx = n.x; n.fy = n.y; sim.alphaTarget(0.3).restart(); } });
-    canvas.addEventListener('mouseup', () => { if (dragged) { dragged.fx = null; dragged.fy = null; dragged = null; sim.alphaTarget(0); } });
+    canvas.addEventListener('mousedown', e => { const r = canvas.getBoundingClientRect(); const n = nodeAt(e.clientX - r.left, e.clientY - r.top); if (n) { dragged = n; n.fx = n.x; n.fy = n.y; sim.alphaTarget(0.1).restart(); } });
+    canvas.addEventListener('mouseup', () => {
+      if (dragged) {
+        nodesRef.current.set(dragged.id, { x: dragged.fx!, y: dragged.fy!, fx: dragged.fx, fy: dragged.fy });
+        dragged = null;
+        sim.alphaTarget(0);
+      }
+    });
 
-    return () => { sim.stop(); };
-  }, [graph, width, height, onNodeClick, selectedNodeId]);
+    return () => { sim.stop(); drawRef.current = null; };
+  }, [graph, width, height, onNodeClick]);
 
   return <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: `${height}px`, background: '#1D1E24' }} />;
 };

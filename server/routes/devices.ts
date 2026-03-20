@@ -29,9 +29,12 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
         if (site) filters.push({ term: { 'network.site': site } });
         if (search) {
           filters.push({
-            query_string: {
-              query: `*${search}*`,
-              fields: ['host.name', 'host.ip', 'observer.vendor'],
+            bool: {
+              should: [
+                { query_string: { query: `*${search}*`, fields: ['host.name', 'observer.vendor'] } },
+                { prefix: { 'host.ip': search } },
+              ],
+              minimum_should_match: 1,
             },
           });
         }

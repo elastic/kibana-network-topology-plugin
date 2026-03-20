@@ -1,5 +1,6 @@
 export type DeviceType = 'router' | 'switch' | 'firewall' | 'server' | 'ap' | 'unknown';
 export type DeviceStatus = 'up' | 'down' | 'degraded' | 'unknown';
+export type NetworkRole = 'core' | 'distribution' | 'access' | 'server';
 export type InterfaceStatus = 'up' | 'down' | 'testing' | 'unknown';
 
 export interface NetworkDevice {
@@ -39,6 +40,7 @@ export interface TopologyNode {
   type: DeviceType;
   status: DeviceStatus;
   site?: string;
+  role?: NetworkRole;
   x?: number;
   y?: number;
 }

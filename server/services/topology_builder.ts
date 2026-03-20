@@ -1,5 +1,5 @@
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
-import type { TopologyGraph, TopologyNode, TopologyLink, DeviceType, DeviceStatus } from '../../common';
+import type { TopologyGraph, TopologyNode, TopologyLink, DeviceType, DeviceStatus, NetworkRole } from '../../common';
 
 interface BuildOptions {
   index: string;
@@ -65,7 +65,8 @@ export async function buildTopologyFromArpMac(
     deviceMap.set(hostname, { ip, mac, type, status });
     if (ip) ipToDevice.set(ip, hostname);
     if (mac) macToDevice.set(mac, hostname);
-    nodes.push({ id: hostname, label: hostname, ip, type, status, site: src.network?.site });
+    const role = (src.network?.role as NetworkRole) || undefined;
+    nodes.push({ id: hostname, label: hostname, ip, type, status, site: src.network?.site, role });
   }
 
   // Step 2: ARP tables

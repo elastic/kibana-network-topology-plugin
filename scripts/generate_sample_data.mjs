@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-const ES=process.argv[2]||'http://localhost:9200',U=process.argv[3]||'elastic',P=process.argv[4]||'changeme';
+process.env.NODE_TLS_REJECT_UNAUTHORIZED='0';
+const ES=process.argv[2]||'https://localhost:9200',U=process.argv[3]||'elastic',P=process.argv[4]||'09ed4afed47fd7533d9eef6438cefd81cdde512b306304d55dec0e35e77f9f8d';
 const IDX='snmp-topology',AUTH=Buffer.from(`${U}:${P}`).toString('base64');
 const SITES=[{name:'HQ-DC1',building:'Main',subnet:'10.1',devices:[
 {name:'hq-core-rtr-01',type:'router',role:'core',vendor:'Cisco',descr:'Cisco IOS XR Software, ASR 9000 Series Router'},
