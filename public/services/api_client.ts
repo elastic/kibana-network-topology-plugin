@@ -7,29 +7,29 @@ import type {
 export class ApiClient {
   constructor(private http: HttpSetup) {}
 
-  async fetchSites(timeRange = 'now-15m'): Promise<SitesResponse> {
-    return this.http.get(API_ROUTES.SITES, { query: { timeRange } });
+  async fetchSites(params: { from?: string; to?: string } = {}): Promise<SitesResponse> {
+    return this.http.get(API_ROUTES.SITES, { query: { from: 'now-15m', to: 'now', ...params } });
   }
 
   async fetchTopology(params: {
-    site?: string; building?: string; role?: string; timeRange?: string;
+    site?: string; building?: string; role?: string; from?: string; to?: string;
   }): Promise<TopologyResponse> {
     return this.http.get(API_ROUTES.TOPOLOGY, {
-      query: { timeRange: 'now-30m', ...params },
+      query: { from: 'now-30m', to: 'now', ...params },
     });
   }
 
   async fetchDevices(params: {
-    site?: string; page?: number; pageSize?: number; search?: string;
+    site?: string; page?: number; pageSize?: number; search?: string; from?: string; to?: string;
   }): Promise<DevicesResponse> {
     return this.http.get(API_ROUTES.DEVICES, {
-      query: { timeRange: 'now-15m', page: 0, pageSize: 50, sortField: 'host.name', sortOrder: 'asc', ...params },
+      query: { from: 'now-15m', to: 'now', page: 0, pageSize: 50, sortField: 'host.name', sortOrder: 'asc', ...params },
     });
   }
 
-  async fetchDeviceDetail(deviceId: string): Promise<DeviceDetailResponse> {
+  async fetchDeviceDetail(deviceId: string, params: { from?: string; to?: string } = {}): Promise<DeviceDetailResponse> {
     return this.http.get(`${API_ROUTES.DEVICE_DETAIL}/${encodeURIComponent(deviceId)}`, {
-      query: { timeRange: 'now-1h' },
+      query: { from: 'now-1h', to: 'now', ...params },
     });
   }
 }

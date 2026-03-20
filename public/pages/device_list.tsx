@@ -7,9 +7,9 @@ import { useApi } from '../hooks/use_api';
 import type { NetworkDevice } from '../../common';
 import { STATUS_COLORS } from '../../common';
 
-interface Props { site?: string; }
+interface Props { site?: string; from: string; to: string; refreshKey: number; }
 
-export const DeviceListView: React.FC<Props> = ({ site }) => {
+export const DeviceListView: React.FC<Props> = ({ site, from, to, refreshKey }) => {
   const api = useApi();
   const [devices, setDevices] = useState<NetworkDevice[]>([]);
   const [total, setTotal] = useState(0);
@@ -22,18 +22,18 @@ export const DeviceListView: React.FC<Props> = ({ site }) => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await api.fetchDevices({ site, page, pageSize, search: search || undefined });
+      const r = await api.fetchDevices({ site, page, pageSize, search: search || undefined, from, to });
       setDevices(r.devices); setTotal(r.total); setError(null);
     } catch (e: any) { setError(e.message); }
     finally { setLoading(false); }
-  }, [api, site, page, pageSize, search]);
+  }, [api, site, page, pageSize, search, from, to]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData, refreshKey]);
 
   if (error) return <EuiCallOut title="Error" color="danger"><p>{error}</p></EuiCallOut>;
 
   return (
-    <>
+    <div style={{ alignSelf: 'flex-start', width: '100%' }}>
       <EuiFlexGroup><EuiFlexItem>
         <EuiFieldSearch placeholder="Search devices..." value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(0); }} isClearable fullWidth />
@@ -53,6 +53,6 @@ export const DeviceListView: React.FC<Props> = ({ site }) => {
         pagination={{ pageIndex: page, pageSize, totalItemCount: total, pageSizeOptions: [25, 50, 100] }}
         onChange={({ page: p }: any) => { if (p) { setPage(p.index); setPageSize(p.size); } }}
       />
-    </>
+    </div>
   );
 };

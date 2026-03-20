@@ -12,19 +12,21 @@ export function registerTopologyRoutes(router: IRouter, logger: Logger) {
           site: schema.maybe(schema.string()),
           building: schema.maybe(schema.string()),
           role: schema.maybe(schema.string()),
-          timeRange: schema.string({ defaultValue: 'now-30m' }),
+          from: schema.string({ defaultValue: 'now-30m' }),
+          to: schema.string({ defaultValue: 'now' }),
           index: schema.string({ defaultValue: DEFAULT_SNMP_INDEX }),
         }),
       },
     },
     async (context, request, response) => {
       try {
-        const { site, building, role, timeRange, index } = request.query;
+        const { site, building, role, from, to, index } = request.query;
         const esClient = (await context.core).elasticsearch.client.asCurrentUser;
 
         const graph = await buildTopologyFromArpMac(esClient, {
           index,
-          timeRange,
+          from,
+          to,
           site,
           building,
           role,

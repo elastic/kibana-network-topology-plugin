@@ -8,14 +8,15 @@ export function registerSitesRoutes(router: IRouter, logger: Logger) {
       path: API_ROUTES.SITES,
       validate: {
         query: schema.object({
-          timeRange: schema.string({ defaultValue: 'now-15m' }),
+          from: schema.string({ defaultValue: 'now-15m' }),
+          to: schema.string({ defaultValue: 'now' }),
           index: schema.string({ defaultValue: DEFAULT_SNMP_INDEX }),
         }),
       },
     },
     async (context, request, response) => {
       try {
-        const { timeRange, index } = request.query;
+        const { from, to, index } = request.query;
         const esClient = (await context.core).elasticsearch.client.asCurrentUser;
 
         const result = await esClient.search({
@@ -23,7 +24,7 @@ export function registerSitesRoutes(router: IRouter, logger: Logger) {
           size: 0,
           query: {
             bool: {
-              filter: [{ range: { '@timestamp': { gte: timeRange } } }],
+              filter: [{ range: { '@timestamp': { gte: from, lte: to } } }],
             },
           },
           aggs: {

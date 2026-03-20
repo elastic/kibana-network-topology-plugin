@@ -8,12 +8,12 @@ import { useApi } from '../hooks/use_api';
 import type { DeviceDetailResponse } from '../../common';
 import { STATUS_COLORS, DEVICE_TYPE_CONFIG } from '../../common';
 
-interface Props { deviceId: string; onClose: () => void; }
+interface Props { deviceId: string; onClose: () => void; from: string; to: string; }
 
 function fmtBytes(b: number) { if (!b) return '0 B'; const k = 1024; const s = ['B','KB','MB','GB','TB']; const i = Math.floor(Math.log(b)/Math.log(k)); return `${(b/Math.pow(k,i)).toFixed(1)} ${s[i]}`; }
 function fmtSpeed(bps: number) { if (bps >= 1e9) return `${(bps/1e9).toFixed(0)} Gbps`; if (bps >= 1e6) return `${(bps/1e6).toFixed(0)} Mbps`; return `${bps} bps`; }
 
-export const DeviceFlyout: React.FC<Props> = ({ deviceId, onClose }) => {
+export const DeviceFlyout: React.FC<Props> = ({ deviceId, onClose, from, to }) => {
   const api = useApi();
   const [data, setData] = useState<DeviceDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -22,7 +22,7 @@ export const DeviceFlyout: React.FC<Props> = ({ deviceId, onClose }) => {
 
   useEffect(() => {
     let c = false; setLoading(true);
-    api.fetchDeviceDetail(deviceId)
+    api.fetchDeviceDetail(deviceId, { from, to })
       .then(r => { if (!c) { setData(r); setLoading(false); } })
       .catch(e => { if (!c) { setError(e.message); setLoading(false); } });
     return () => { c = true; };

@@ -9,9 +9,9 @@ import { DEVICE_TYPE_CONFIG } from '../../common';
 import { TopologyCanvas } from '../components/topology_canvas';
 import { DeviceFlyout } from '../components/device_flyout';
 
-interface Props { site?: string; onBackToOverview: () => void; }
+interface Props { site?: string; onBackToOverview: () => void; from: string; to: string; refreshKey: number; }
 
-export const TopologyView: React.FC<Props> = ({ site, onBackToOverview }) => {
+export const TopologyView: React.FC<Props> = ({ site, onBackToOverview, from, to, refreshKey }) => {
   const api = useApi();
   const [graph, setGraph] = useState<TopologyGraph | null>(null);
   const [loading, setLoading] = useState(true);
@@ -21,11 +21,11 @@ export const TopologyView: React.FC<Props> = ({ site, onBackToOverview }) => {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    api.fetchTopology({ site })
+    api.fetchTopology({ site, from, to })
       .then((r) => { if (!cancelled) { setGraph(r.graph); setLoading(false); } })
       .catch((e) => { if (!cancelled) { setError(e.message); setLoading(false); } });
     return () => { cancelled = true; };
-  }, [api, site]);
+  }, [api, site, from, to, refreshKey]);
 
   const handleNodeClick = useCallback((id: string) => setSelectedDevice(id), []);
   const handleCloseFlyout = useCallback(() => setSelectedDevice(null), []);
@@ -53,7 +53,7 @@ export const TopologyView: React.FC<Props> = ({ site, onBackToOverview }) => {
       <EuiPanel hasBorder hasShadow={false} paddingSize="none" style={{ overflow: 'hidden' }}>
         <TopologyCanvas graph={graph} width={1200} height={700} onNodeClick={handleNodeClick} selectedNodeId={selectedDevice} />
       </EuiPanel>
-      {selectedDevice && <DeviceFlyout deviceId={selectedDevice} onClose={handleCloseFlyout} />}
+      {selectedDevice && <DeviceFlyout deviceId={selectedDevice} from={from} to={to} onClose={handleCloseFlyout} />}
     </>
   );
 };

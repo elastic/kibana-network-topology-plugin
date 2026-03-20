@@ -7,9 +7,9 @@ import { useApi } from '../hooks/use_api';
 import type { SiteHealth } from '../../common';
 import { STATUS_COLORS } from '../../common';
 
-interface Props { onSiteClick: (site: string) => void; }
+interface Props { onSiteClick: (site: string) => void; from: string; to: string; refreshKey: number; }
 
-export const SiteOverview: React.FC<Props> = ({ onSiteClick }) => {
+export const SiteOverview: React.FC<Props> = ({ onSiteClick, from, to, refreshKey }) => {
   const api = useApi();
   const [sites, setSites] = useState<SiteHealth[]>([]);
   const [totalDevices, setTotalDevices] = useState(0);
@@ -19,11 +19,11 @@ export const SiteOverview: React.FC<Props> = ({ onSiteClick }) => {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    api.fetchSites()
+    api.fetchSites({ from, to })
       .then((r) => { if (!cancelled) { setSites(r.sites); setTotalDevices(r.totalDevices); setLoading(false); } })
       .catch((e) => { if (!cancelled) { setError(e.message); setLoading(false); } });
     return () => { cancelled = true; };
-  }, [api]);
+  }, [api, from, to, refreshKey]);
 
   if (loading) return <EuiFlexGroup justifyContent="center" style={{ minHeight: 300 }}><EuiFlexItem grow={false}><EuiLoadingSpinner size="xl" /></EuiFlexItem></EuiFlexGroup>;
   if (error) return <EuiCallOut title="Error loading sites" color="danger"><p>{error}</p></EuiCallOut>;

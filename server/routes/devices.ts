@@ -15,28 +15,35 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
           sortField: schema.string({ defaultValue: 'host.name' }),
           sortOrder: schema.string({ defaultValue: 'asc' }),
           search: schema.maybe(schema.string()),
-          timeRange: schema.string({ defaultValue: 'now-15m' }),
+          from: schema.string({ defaultValue: 'now-15m' }),
+          to: schema.string({ defaultValue: 'now' }),
           index: schema.string({ defaultValue: DEFAULT_SNMP_INDEX }),
         }),
       },
     },
     async (context, request, response) => {
       try {
-        const { site, page, pageSize, sortOrder, search, timeRange, index } = request.query;
+        const { site, page, pageSize, sortOrder, search, from, to, index } = request.query;
         const esClient = (await context.core).elasticsearch.client.asCurrentUser;
 
-        const filters: any[] = [{ range: { '@timestamp': { gte: timeRange } } }];
+        const filters: any[] = [{ range: { '@timestamp': { gte: from, lte: to } } }];
         if (site) filters.push({ term: { 'network.site': site } });
         if (search) {
-          filters.push({
-            bool: {
-              should: [
-                { query_string: { query: `*${search}*`, fields: ['host.name', 'observer.vendor'] } },
-                { prefix: { 'host.ip': search } },
-              ],
-              minimum_should_match: 1,
+          const isValidIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(search);
+          const shouldClauses: any[] = [
+            {
+              query_string: {
+                query: `*${search}*`,
+                fields: [
+                  'host.name', 'host.mac', 'host.type',
+                  'observer.vendor', 'observer.os.full',
+                  'network.site', 'network.building', 'network.role',
+                ],
+              },
             },
-          });
+          ];
+          if (isValidIp) shouldClauses.push({ term: { 'host.ip': search } });
+          filters.push({ bool: { should: shouldClauses, minimum_should_match: 1 } });
         }
 
         const result = await esClient.search({
@@ -116,7 +123,8 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
       validate: {
         params: schema.object({ id: schema.string() }),
         query: schema.object({
-          timeRange: schema.string({ defaultValue: 'now-1h' }),
+          from: schema.string({ defaultValue: 'now-1h' }),
+          to: schema.string({ defaultValue: 'now' }),
           index: schema.string({ defaultValue: DEFAULT_SNMP_INDEX }),
         }),
       },
@@ -124,7 +132,7 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
     async (context, request, response) => {
       try {
         const { id } = request.params;
-        const { timeRange, index } = request.query;
+        const { from, to, index } = request.query;
         const esClient = (await context.core).elasticsearch.client.asCurrentUser;
 
         const result = await esClient.search({
@@ -134,7 +142,7 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
             bool: {
               filter: [
                 { term: { 'host.name': id } },
-                { range: { '@timestamp': { gte: timeRange } } },
+                { range: { '@timestamp': { gte: from, lte: to } } },
               ],
             },
           },

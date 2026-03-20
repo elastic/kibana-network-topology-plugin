@@ -3,7 +3,8 @@ import type { TopologyGraph, TopologyNode, TopologyLink, DeviceType, DeviceStatu
 
 interface BuildOptions {
   index: string;
-  timeRange: string;
+  from: string;
+  to: string;
   site?: string;
   building?: string;
   role?: string;
@@ -14,9 +15,9 @@ export async function buildTopologyFromArpMac(
   esClient: ElasticsearchClient,
   options: BuildOptions
 ): Promise<TopologyGraph> {
-  const { index, timeRange, site, building, role, logger } = options;
+  const { index, from, to, site, building, role, logger } = options;
 
-  const filters: any[] = [{ range: { '@timestamp': { gte: timeRange } } }];
+  const filters: any[] = [{ range: { '@timestamp': { gte: from, lte: to } } }];
   if (site) filters.push({ term: { 'network.site': site } });
   if (building) filters.push({ term: { 'network.building': building } });
   if (role) filters.push({ term: { 'network.role': role } });
