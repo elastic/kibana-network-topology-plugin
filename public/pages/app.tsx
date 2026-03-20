@@ -7,8 +7,9 @@ import {
 import { SiteOverview } from './site_overview';
 import { TopologyView } from './topology_view';
 import { DeviceListView } from './device_list';
+import { SetupGuide } from './setup_guide';
 
-type ViewMode = 'overview' | 'topology' | 'devices';
+type ViewMode = 'overview' | 'topology' | 'devices' | 'setup';
 
 export const NetworkTopologyApp: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('overview');
@@ -77,9 +78,9 @@ export const NetworkTopologyApp: React.FC = () => {
         </EuiPageHeader>
 
         <EuiTabs>
-          {(['overview', 'topology', 'devices'] as ViewMode[]).map((tab) => (
+          {(['overview', 'topology', 'devices', 'setup'] as ViewMode[]).map((tab) => (
             <EuiTab key={tab} isSelected={viewMode === tab} onClick={() => setViewMode(tab)}>
-              {tab === 'overview' ? 'Overview' : tab === 'topology' ? 'Topology Map' : 'Devices'}
+              {tab === 'overview' ? 'Overview' : tab === 'topology' ? 'Topology Map' : tab === 'devices' ? 'Devices' : 'Setup'}
             </EuiTab>
           ))}
         </EuiTabs>
@@ -89,6 +90,7 @@ export const NetworkTopologyApp: React.FC = () => {
         {viewMode === 'overview' && <SiteOverview onSiteClick={handleSiteClick} from={start} to={end} refreshKey={refreshKey} />}
         {viewMode === 'topology' && <TopologyView site={scope.site} onBackToOverview={handleBackToOverview} from={start} to={end} refreshKey={refreshKey} />}
         {viewMode === 'devices' && <DeviceListView site={scope.site} from={start} to={end} refreshKey={refreshKey} />}
+        {viewMode === 'setup' && <SetupGuide />}
       </EuiPageBody>
     </EuiPage>
   );

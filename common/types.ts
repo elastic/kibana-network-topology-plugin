@@ -98,3 +98,10 @@ export interface DeviceDetailResponse {
   neighbors: Array<{ ip: string; mac: string }>;
   recentEvents: Array<{ timestamp: string; message: string; level: string }>;
 }
+
+export interface SetupHealthResponse {
+  indexTemplate: { installed: boolean };
+  ingestPipeline: { installed: boolean };
+  recentData: { hasData: boolean; deviceCount: number; siteCount: number };
+  fieldCoverage: { interfaces: boolean; arpTable: boolean; macTable: boolean };
+}

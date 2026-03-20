@@ -1,7 +1,7 @@
 import type { HttpSetup } from '@kbn/core/public';
 import { API_ROUTES } from '../../common';
 import type {
-  SitesResponse, TopologyResponse, DevicesResponse, DeviceDetailResponse,
+  SitesResponse, TopologyResponse, DevicesResponse, DeviceDetailResponse, SetupHealthResponse,
 } from '../../common';
 
 export class ApiClient {
@@ -31,5 +31,9 @@ export class ApiClient {
     return this.http.get(`${API_ROUTES.DEVICE_DETAIL}/${encodeURIComponent(deviceId)}`, {
       query: { from: 'now-1h', to: 'now', ...params },
     });
+  }
+
+  async checkSetupHealth(): Promise<SetupHealthResponse> {
+    return this.http.get(API_ROUTES.SETUP_HEALTH);
   }
 }

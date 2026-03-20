@@ -14,6 +14,7 @@ export const API_ROUTES = {
   DEVICE_DETAIL: `${API_BASE}/device`,
   INTERFACES: `${API_BASE}/interfaces`,
   HEALTH: `${API_BASE}/health`,
+  SETUP_HEALTH: `${API_BASE}/setup/health`,
 } as const;
 
 export const DEVICE_TYPE_CONFIG: Record<string, { color: string; icon: string }> = {

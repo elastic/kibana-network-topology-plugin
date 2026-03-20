@@ -1,0 +1,207 @@
+# Telegraf SNMP collector for kibana-network-o11y
+# ──────────────────────────────────────────────────────────────────────────────
+# Requirements: Telegraf 1.20+
+# Replace: DEVICE_IP, YOUR_SITE, YOUR_ROLE, YOUR_ES_HOST, YOUR_PASSWORD
+# ──────────────────────────────────────────────────────────────────────────────
+
+[agent]
+  interval = "60s"
+  flush_interval = "60s"
+
+# ── Interface metrics ──────────────────────────────────────────────────────────
+[[inputs.snmp]]
+  agents  = ["udp://DEVICE_IP:161"]
+  version = 2
+  community = "public"
+  name    = "snmp_interface"
+
+  # Device-level fields
+  [[inputs.snmp.field]]
+    name = "sysName"
+    oid  = "SNMPv2-MIB::sysName.0"
+  [[inputs.snmp.field]]
+    name = "sysDescr"
+    oid  = "SNMPv2-MIB::sysDescr.0"
+
+  # Interface table — one measurement per interface row
+  [[inputs.snmp.table]]
+    name = "ifTable"
+    inherit_tags = ["sysName", "sysDescr", "agent_host"]
+
+    [[inputs.snmp.table.field]]
+      name   = "ifDescr"
+      oid    = "IF-MIB::ifDescr"
+      is_tag = true
+
+    [[inputs.snmp.table.field]]
+      name = "ifSpeed"
+      oid  = "IF-MIB::ifSpeed"
+
+    [[inputs.snmp.table.field]]
+      name = "ifAdminStatus"
+      oid  = "IF-MIB::ifAdminStatus"
+
+    [[inputs.snmp.table.field]]
+      name = "ifOperStatus"
+      oid  = "IF-MIB::ifOperStatus"
+
+    [[inputs.snmp.table.field]]
+      name = "ifInOctets"
+      oid  = "IF-MIB::ifInOctets"
+
+    [[inputs.snmp.table.field]]
+      name = "ifOutOctets"
+      oid  = "IF-MIB::ifOutOctets"
+
+    [[inputs.snmp.table.field]]
+      name = "ifInErrors"
+      oid  = "IF-MIB::ifInErrors"
+
+    [[inputs.snmp.table.field]]
+      name = "ifOutErrors"
+      oid  = "IF-MIB::ifOutErrors"
+
+# ── ARP table ─────────────────────────────────────────────────────────────────
+[[inputs.snmp]]
+  agents    = ["udp://DEVICE_IP:161"]
+  version   = 2
+  community = "public"
+  name      = "snmp_arp"
+  interval  = "120s"
+
+  [[inputs.snmp.field]]
+    name = "sysName"
+    oid  = "SNMPv2-MIB::sysName.0"
+  [[inputs.snmp.field]]
+    name = "sysDescr"
+    oid  = "SNMPv2-MIB::sysDescr.0"
+
+  [[inputs.snmp.table]]
+    name = "ipNetToMediaTable"
+    inherit_tags = ["sysName", "sysDescr"]
+
+    [[inputs.snmp.table.field]]
+      name = "ipNetToMediaPhysAddress"
+      oid  = "IP-MIB::ipNetToMediaPhysAddress"
+    [[inputs.snmp.table.field]]
+      name   = "ipNetToMediaNetAddress"
+      oid    = "IP-MIB::ipNetToMediaNetAddress"
+      is_tag = true
+
+# ── MAC forwarding table (switches only) ─────────────────────────────────────
+[[inputs.snmp]]
+  agents    = ["udp://DEVICE_IP:161"]
+  version   = 2
+  community = "public"
+  name      = "snmp_mac_table"
+  interval  = "120s"
+
+  [[inputs.snmp.field]]
+    name = "sysName"
+    oid  = "SNMPv2-MIB::sysName.0"
+  [[inputs.snmp.field]]
+    name = "sysDescr"
+    oid  = "SNMPv2-MIB::sysDescr.0"
+
+  [[inputs.snmp.table]]
+    name = "dot1dTpFdbTable"
+    inherit_tags = ["sysName", "sysDescr"]
+
+    [[inputs.snmp.table.field]]
+      name   = "dot1dTpFdbAddress"
+      oid    = "BRIDGE-MIB::dot1dTpFdbAddress"
+      is_tag = true
+    [[inputs.snmp.table.field]]
+      name = "dot1dTpFdbPort"
+      oid  = "BRIDGE-MIB::dot1dTpFdbPort"
+    [[inputs.snmp.table.field]]
+      name = "dot1dTpFdbStatus"
+      oid  = "BRIDGE-MIB::dot1dTpFdbStatus"
+
+# ── Rename fields to plugin schema ────────────────────────────────────────────
+[[processors.rename]]
+  namepass = ["ifTable"]
+  [[processors.rename.replace]]
+    field = "sysName"
+    dest  = "host.name"
+  [[processors.rename.replace]]
+    field = "sysDescr"
+    dest  = "observer.sys_descr"
+  [[processors.rename.replace]]
+    tag   = "agent_host"
+    dest  = "host.ip"
+  [[processors.rename.replace]]
+    tag   = "ifDescr"
+    dest  = "interface.name"
+  [[processors.rename.replace]]
+    field = "ifSpeed"
+    dest  = "interface.speed"
+  [[processors.rename.replace]]
+    field = "ifAdminStatus"
+    dest  = "interface.status.admin"
+  [[processors.rename.replace]]
+    field = "ifOperStatus"
+    dest  = "interface.status.oper"
+  [[processors.rename.replace]]
+    field = "ifInOctets"
+    dest  = "interface.traffic.in.bytes"
+  [[processors.rename.replace]]
+    field = "ifOutOctets"
+    dest  = "interface.traffic.out.bytes"
+  [[processors.rename.replace]]
+    field = "ifInErrors"
+    dest  = "interface.errors.in"
+  [[processors.rename.replace]]
+    field = "ifOutErrors"
+    dest  = "interface.errors.out"
+
+[[processors.rename]]
+  namepass = ["ipNetToMediaTable"]
+  [[processors.rename.replace]]
+    field = "sysName"
+    dest  = "host.name"
+  [[processors.rename.replace]]
+    field = "sysDescr"
+    dest  = "observer.sys_descr"
+  [[processors.rename.replace]]
+    field = "ipNetToMediaPhysAddress"
+    dest  = "arp.mac_addr"
+  [[processors.rename.replace]]
+    tag   = "ipNetToMediaNetAddress"
+    dest  = "arp.ip_addr"
+
+[[processors.rename]]
+  namepass = ["dot1dTpFdbTable"]
+  [[processors.rename.replace]]
+    field = "sysName"
+    dest  = "host.name"
+  [[processors.rename.replace]]
+    field = "sysDescr"
+    dest  = "observer.sys_descr"
+  [[processors.rename.replace]]
+    tag   = "dot1dTpFdbAddress"
+    dest  = "mac_table.mac_addr"
+  [[processors.rename.replace]]
+    field = "dot1dTpFdbPort"
+    dest  = "mac_table.port_index"
+  [[processors.rename.replace]]
+    field = "dot1dTpFdbStatus"
+    dest  = "mac_table.status"
+
+# ── Add static site/role tags ─────────────────────────────────────────────────
+[[processors.override]]
+  [processors.override.tags]
+    "network.site" = "YOUR_SITE"   # e.g. HQ-DC1
+    "network.role" = "YOUR_ROLE"   # core | distribution | access | server
+
+# ── Output to Elasticsearch ──────────────────────────────────────────────────
+[[outputs.elasticsearch]]
+  urls      = ["https://YOUR_ES_HOST:9200"]
+  username  = "elastic"
+  password  = "YOUR_PASSWORD"
+  insecure_skip_verify = true
+  index_name = "snmp-%Y.%m.%d"
+  pipeline   = "snmp-device-enrichment"
+  # Map Telegraf measurement name to _index (optional, already covered above)
+  [outputs.elasticsearch.headers]
+    Content-Type = "application/json"
