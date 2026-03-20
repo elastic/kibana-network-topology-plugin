@@ -1,0 +1,33 @@
+export const PLUGIN_ID = 'networkTopology';
+export const PLUGIN_NAME = 'Network Topology';
+
+export const DEFAULT_SNMP_INDEX = 'snmp-*,logstash-snmp-*';
+export const DEFAULT_SYSLOG_INDEX = 'logs-*,filebeat-*';
+export const DEFAULT_NETFLOW_INDEX = 'netflow-*';
+export const DEFAULT_METRICS_INDEX = 'metricbeat-*';
+
+export const API_BASE = '/api/network_topology';
+export const API_ROUTES = {
+  TOPOLOGY: `${API_BASE}/topology`,
+  SITES: `${API_BASE}/sites`,
+  DEVICES: `${API_BASE}/devices`,
+  DEVICE_DETAIL: `${API_BASE}/device`,
+  INTERFACES: `${API_BASE}/interfaces`,
+  HEALTH: `${API_BASE}/health`,
+} as const;
+
+export const DEVICE_TYPE_CONFIG: Record<string, { color: string; icon: string }> = {
+  router:   { color: '#0077CC', icon: 'node' },
+  switch:   { color: '#00BFB3', icon: 'layers' },
+  firewall: { color: '#F5A623', icon: 'shield' },
+  server:   { color: '#9170B8', icon: 'compute' },
+  ap:       { color: '#54B399', icon: 'wifi' },
+  unknown:  { color: '#98A2B3', icon: 'questionInCircle' },
+};
+
+export const STATUS_COLORS: Record<string, string> = {
+  up:       '#00BFB3',
+  down:     '#BD271E',
+  degraded: '#F5A623',
+  unknown:  '#98A2B3',
+};

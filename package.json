@@ -1,0 +1,23 @@
+{
+  "name": "network_topology",
+  "version": "0.1.0",
+  "description": "Kibana plugin for network monitoring and topology mapping via SNMP data",
+  "license": "Elastic-2.0",
+  "private": true,
+  "scripts": {
+    "build": "yarn plugin-helpers build",
+    "dev": "yarn plugin-helpers dev",
+    "plugin-helpers": "node ../../scripts/plugin_helpers",
+    "kbn": "node ../../scripts/kbn",
+    "test:jest": "../../node_modules/.bin/jest --config jest.config.js",
+    "lint": "../../node_modules/.bin/eslint . --ext .ts,.tsx",
+    "type-check": "../../node_modules/.bin/tsc --noEmit"
+  },
+  "dependencies": {
+    "d3": "^7.8.5",
+    "d3-force": "^3.0.0",
+    "d3-zoom": "^3.0.0",
+    "d3-quadtree": "^3.0.1",
+    "d3-selection": "^3.0.0"
+  }
+}

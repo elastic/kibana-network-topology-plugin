@@ -1,0 +1,12 @@
+{
+  "id": "networkTopology",
+  "version": "kibana",
+  "server": true,
+  "ui": true,
+  "requiredPlugins": [
+    "data",
+    "navigation"
+  ],
+  "optionalPlugins": [],
+  "requiredBundles": ["kibanaReact"]
+}
