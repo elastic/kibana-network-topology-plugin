@@ -20,7 +20,7 @@ export class ApiClient {
   }
 
   async fetchDevices(params: {
-    site?: string; page?: number; pageSize?: number; search?: string; from?: string; to?: string;
+    site?: string; page?: number; pageSize?: number; kql?: string; filters?: string; from?: string; to?: string;
   }): Promise<DevicesResponse> {
     return this.http.get(API_ROUTES.DEVICES, {
       query: { from: 'now-15m', to: 'now', page: 0, pageSize: 50, sortField: 'host.name', sortOrder: 'asc', ...params },

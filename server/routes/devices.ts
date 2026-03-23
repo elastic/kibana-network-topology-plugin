@@ -1,5 +1,6 @@
 import type { IRouter, Logger } from '@kbn/core/server';
 import { schema } from '@kbn/config-schema';
+import { buildEsQuery, type Filter, type Query } from '@kbn/es-query';
 import { API_ROUTES, DEFAULT_SNMP_INDEX } from '../../common';
 
 export function registerDevicesRoutes(router: IRouter, logger: Logger) {
@@ -14,7 +15,8 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
           pageSize: schema.number({ defaultValue: 50 }),
           sortField: schema.string({ defaultValue: 'host.name' }),
           sortOrder: schema.string({ defaultValue: 'asc' }),
-          search: schema.maybe(schema.string()),
+          kql: schema.maybe(schema.string()),
+          filters: schema.maybe(schema.string()),
           from: schema.string({ defaultValue: 'now-15m' }),
           to: schema.string({ defaultValue: 'now' }),
           index: schema.string({ defaultValue: DEFAULT_SNMP_INDEX }),
@@ -23,33 +25,37 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
     },
     async (context, request, response) => {
       try {
-        const { site, page, pageSize, sortOrder, search, from, to, index } = request.query;
+        const { site, page, pageSize, sortOrder, kql, filters: filtersParam, from, to, index } = request.query;
         const esClient = (await context.core).elasticsearch.client.asCurrentUser;
 
-        const filters: any[] = [{ range: { '@timestamp': { gte: from, lte: to } } }];
-        if (site) filters.push({ term: { 'network.site': site } });
-        if (search) {
-          const isValidIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(search);
-          const shouldClauses: any[] = [
-            {
-              query_string: {
-                query: `*${search}*`,
-                fields: [
-                  'host.name', 'host.mac', 'host.type',
-                  'observer.vendor', 'observer.os.full',
-                  'network.site', 'network.building', 'network.role',
-                ],
-              },
-            },
-          ];
-          if (isValidIp) shouldClauses.push({ term: { 'host.ip': search } });
-          filters.push({ bool: { should: shouldClauses, minimum_should_match: 1 } });
+        const esFilters: any[] = [{ range: { '@timestamp': { gte: from, lte: to } } }];
+        if (site) esFilters.push({ term: { 'network.site': site } });
+
+        if (kql || filtersParam) {
+          const queries: Query[] = kql ? [{ language: 'kuery', query: kql }] : [];
+          const parsedFilters: Filter[] = [];
+          if (filtersParam) {
+            try {
+              const parsed = JSON.parse(filtersParam);
+              if (Array.isArray(parsed)) parsedFilters.push(...parsed);
+            } catch {
+              // ignore malformed filters
+            }
+          }
+          try {
+            const esQuery = buildEsQuery(undefined, queries, parsedFilters, {
+              allowLeadingWildcards: true,
+            });
+            esFilters.push(esQuery);
+          } catch (kqlErr) {
+            return response.badRequest({ body: { message: `Invalid KQL: ${kqlErr}` } });
+          }
         }
 
         const result = await esClient.search({
           index,
           size: 0,
-          query: { bool: { filter: filters } },
+          query: { bool: { filter: esFilters } },
           aggs: {
             total_devices: { cardinality: { field: 'host.name' } },
             devices: {
