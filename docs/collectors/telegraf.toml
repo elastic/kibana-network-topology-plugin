@@ -2,6 +2,11 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # Requirements: Telegraf 1.20+
 # Replace: DEVICE_IP, YOUR_SITE, YOUR_ROLE, YOUR_ES_HOST, YOUR_PASSWORD
+#
+# All three table sections use SNMP Walk: specifying only the root OID on
+# [[inputs.snmp.table]] (no field sub-entries) causes Telegraf to walk the
+# entire subtree in a single GETBULK sequence rather than issuing per-column
+# requests. This is gentler on device SNMP agents.
 # ──────────────────────────────────────────────────────────────────────────────
 
 [agent]
@@ -15,7 +20,7 @@
   community = "public"
   name    = "snmp_interface"
 
-  # Device-level fields
+  # Device-level scalars (GET)
   [[inputs.snmp.field]]
     name = "sysName"
     oid  = "SNMPv2-MIB::sysName.0"
@@ -23,43 +28,11 @@
     name = "sysDescr"
     oid  = "SNMPv2-MIB::sysDescr.0"
 
-  # Interface table — one measurement per interface row
+  # Walk the entire ifTable subtree — one measurement row per interface
   [[inputs.snmp.table]]
-    name = "ifTable"
+    name         = "ifTable"
+    oid          = "IF-MIB::ifTable"
     inherit_tags = ["sysName", "sysDescr", "agent_host"]
-
-    [[inputs.snmp.table.field]]
-      name   = "ifDescr"
-      oid    = "IF-MIB::ifDescr"
-      is_tag = true
-
-    [[inputs.snmp.table.field]]
-      name = "ifSpeed"
-      oid  = "IF-MIB::ifSpeed"
-
-    [[inputs.snmp.table.field]]
-      name = "ifAdminStatus"
-      oid  = "IF-MIB::ifAdminStatus"
-
-    [[inputs.snmp.table.field]]
-      name = "ifOperStatus"
-      oid  = "IF-MIB::ifOperStatus"
-
-    [[inputs.snmp.table.field]]
-      name = "ifInOctets"
-      oid  = "IF-MIB::ifInOctets"
-
-    [[inputs.snmp.table.field]]
-      name = "ifOutOctets"
-      oid  = "IF-MIB::ifOutOctets"
-
-    [[inputs.snmp.table.field]]
-      name = "ifInErrors"
-      oid  = "IF-MIB::ifInErrors"
-
-    [[inputs.snmp.table.field]]
-      name = "ifOutErrors"
-      oid  = "IF-MIB::ifOutErrors"
 
 # ── ARP table ─────────────────────────────────────────────────────────────────
 [[inputs.snmp]]
@@ -76,17 +49,11 @@
     name = "sysDescr"
     oid  = "SNMPv2-MIB::sysDescr.0"
 
+  # Walk the entire ipNetToMediaTable subtree
   [[inputs.snmp.table]]
-    name = "ipNetToMediaTable"
+    name         = "ipNetToMediaTable"
+    oid          = "IP-MIB::ipNetToMediaTable"
     inherit_tags = ["sysName", "sysDescr"]
-
-    [[inputs.snmp.table.field]]
-      name = "ipNetToMediaPhysAddress"
-      oid  = "IP-MIB::ipNetToMediaPhysAddress"
-    [[inputs.snmp.table.field]]
-      name   = "ipNetToMediaNetAddress"
-      oid    = "IP-MIB::ipNetToMediaNetAddress"
-      is_tag = true
 
 # ── MAC forwarding table (switches only) ─────────────────────────────────────
 [[inputs.snmp]]
@@ -103,20 +70,11 @@
     name = "sysDescr"
     oid  = "SNMPv2-MIB::sysDescr.0"
 
+  # Walk the entire dot1dTpFdbTable subtree
   [[inputs.snmp.table]]
-    name = "dot1dTpFdbTable"
+    name         = "dot1dTpFdbTable"
+    oid          = "BRIDGE-MIB::dot1dTpFdbTable"
     inherit_tags = ["sysName", "sysDescr"]
-
-    [[inputs.snmp.table.field]]
-      name   = "dot1dTpFdbAddress"
-      oid    = "BRIDGE-MIB::dot1dTpFdbAddress"
-      is_tag = true
-    [[inputs.snmp.table.field]]
-      name = "dot1dTpFdbPort"
-      oid  = "BRIDGE-MIB::dot1dTpFdbPort"
-    [[inputs.snmp.table.field]]
-      name = "dot1dTpFdbStatus"
-      oid  = "BRIDGE-MIB::dot1dTpFdbStatus"
 
 # ── Rename fields to plugin schema ────────────────────────────────────────────
 [[processors.rename]]
@@ -202,6 +160,5 @@
   insecure_skip_verify = true
   index_name = "snmp-%Y.%m.%d"
   pipeline   = "snmp-device-enrichment"
-  # Map Telegraf measurement name to _index (optional, already covered above)
   [outputs.elasticsearch.headers]
     Content-Type = "application/json"
