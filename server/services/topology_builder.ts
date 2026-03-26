@@ -1,5 +1,16 @@
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import type { TopologyGraph, TopologyNode, TopologyLink, DeviceType, DeviceStatus, NetworkRole } from '../../common';
+import { DEVICE_DOWN_THRESHOLD_MS } from '../../common';
+
+/** Returns true if the dotted-decimal ip falls within the cidr block. */
+function ipInCidr(ip: string, cidr: string): boolean {
+  const [addr, prefixStr] = cidr.split('/');
+  const bits = parseInt(prefixStr, 10);
+  if (isNaN(bits) || bits < 0 || bits > 32) return false;
+  const toNum = (s: string) => s.split('.').reduce((acc, o) => (acc << 8) | parseInt(o, 10), 0) >>> 0;
+  const mask = bits === 0 ? 0 : (0xFFFFFFFF << (32 - bits)) >>> 0;
+  return (toNum(ip) & mask) === (toNum(addr) & mask);
+}
 
 interface BuildOptions {
   index: string;
@@ -8,21 +19,52 @@ interface BuildOptions {
   site?: string;
   building?: string;
   role?: string;
+  /** CIDR notation filter, e.g. "192.168.1.0/24" — includes devices with any interface IP in this range */
+  cidr?: string;
   logger: Logger;
 }
+
 
 export async function buildTopologyFromArpMac(
   esClient: ElasticsearchClient,
   options: BuildOptions
 ): Promise<TopologyGraph> {
-  const { index, from, to, site, building, role, logger } = options;
+  const { index, from, to, site, building, role, cidr, logger } = options;
 
   const filters: any[] = [{ range: { '@timestamp': { gte: from, lte: to } } }];
   if (site) filters.push({ term: { 'network.site': site } });
   if (building) filters.push({ term: { 'network.building': building } });
   if (role) filters.push({ term: { 'network.role': role } });
 
-  // Step 1: Get all devices
+  // CIDR filter: use ip_addr.address (interface IPs) to find devices on the subnet,
+  // since host.ip is always the management/polling address and may be on a different VLAN.
+  // Pre-query ipAddrTable docs to get device names, then restrict all main queries by name.
+  if (cidr) {
+    const ipAddrResult = await esClient.search({
+      index, size: 0,
+      query: {
+        bool: {
+          filter: [
+            { range: { '@timestamp': { gte: from, lte: to } } },
+            { term: { 'ip_addr.address': cidr } },
+          ],
+        },
+      },
+      aggs: { device_names: { terms: { field: 'host.name', size: 5000 } } },
+    });
+
+    const names: string[] =
+      ((ipAddrResult.aggregations?.device_names as any)?.buckets ?? []).map((b: any) => b.key as string);
+
+    if (names.length === 0) {
+      // No ipAddrTable data — fall back to management IP match
+      filters.push({ term: { 'host.ip': cidr } });
+    } else {
+      filters.push({ terms: { 'host.name': names } });
+    }
+  }
+
+  // Step 1: Get all polled devices
   const devicesResult = await esClient.search({
     index, size: 0,
     query: { bool: { filter: filters } },
@@ -33,7 +75,7 @@ export async function buildTopologyFromArpMac(
           info: {
             top_hits: {
               size: 1, sort: [{ '@timestamp': 'desc' }],
-              _source: ['host.name', 'host.ip', 'host.mac', 'host.type',
+              _source: ['@timestamp', 'host.name', 'host.ip', 'host.mac', 'host.type',
                         'observer.vendor', 'network.site', 'network.building', 'network.role'],
             },
           },
@@ -59,15 +101,20 @@ export async function buildTopologyFromArpMac(
     const downCount = bucket.down_ifaces?.doc_count || 0;
     const totalCount = bucket.total_ifaces?.value || 0;
 
+    // Time-based status: down if no data in last DEVICE_DOWN_THRESHOLD_MS.
+    // Degraded if reporting but all interfaces are operationally down.
+    // Note: downCount is a doc_count approximation, not cardinality.
+    const lastSeenTs = src['@timestamp'] as string | undefined;
+    const msSince = lastSeenTs ? Date.now() - new Date(lastSeenTs).getTime() : Infinity;
     let status: DeviceStatus = 'up';
-    if (totalCount > 0 && downCount > totalCount * 0.5) status = 'down';
-    else if (downCount > 0) status = 'degraded';
+    if (msSince > DEVICE_DOWN_THRESHOLD_MS) status = 'down';
+    else if (totalCount > 0 && downCount === totalCount) status = 'degraded';
 
     deviceMap.set(hostname, { ip, mac, type, status });
     if (ip) ipToDevice.set(ip, hostname);
     if (mac) macToDevice.set(mac, hostname);
-    const role = (src.network?.role as NetworkRole) || undefined;
-    nodes.push({ id: hostname, label: hostname, ip, type, status, site: src.network?.site, role });
+    const nodeRole = (src.network?.role as NetworkRole) || undefined;
+    nodes.push({ id: hostname, label: hostname, ip, type, status, site: src.network?.site, role: nodeRole });
   }
 
   // Step 2: ARP tables
@@ -126,8 +173,32 @@ export async function buildTopologyFromArpMac(
     links.push({ id: key, source: src, target: tgt, sourcePort: srcPort, targetPort: tgtPort, status, method });
   }
 
-  // ARP-based adjacency
   const arpBuckets = (arpResult.aggregations?.by_device as any)?.buckets || [];
+
+  // ARP Pass 1: create unmanaged nodes for neighbors not in the polled device set.
+  // These nodes are added to the lookup maps so Pass 2 can build links to them naturally.
+  // The MAC table adjacency loop below also benefits from this automatically.
+  const discoveredIds = new Set<string>();
+  for (const devBucket of arpBuckets) {
+    for (const arpEntry of (devBucket.arp_entries?.buckets || [])) {
+      const mac = (arpEntry.key as string).toLowerCase();
+      const ip = arpEntry.ip?.buckets?.[0]?.key || '';
+      if (!mac && !ip) continue;
+      if (!macToDevice.has(mac) && (!ip || !ipToDevice.has(ip))) {
+        // In a segment view, skip unmanaged nodes whose IP is outside the selected CIDR.
+        if (cidr && ip && !ipInCidr(ip, cidr)) continue;
+        const nodeId = ip || mac;
+        if (discoveredIds.has(nodeId)) continue;
+        discoveredIds.add(nodeId);
+        nodes.push({ id: nodeId, label: nodeId, ip, type: 'unknown', status: 'unknown', managed: false });
+        deviceMap.set(nodeId, { ip, mac, type: 'unknown', status: 'unknown' });
+        if (ip) ipToDevice.set(ip, nodeId);
+        if (mac) macToDevice.set(mac, nodeId);
+      }
+    }
+  }
+
+  // ARP Pass 2: build links (now resolves both managed and discovered neighbors)
   for (const devBucket of arpBuckets) {
     const deviceName = devBucket.key;
     for (const arpEntry of (devBucket.arp_entries?.buckets || [])) {
@@ -141,7 +212,7 @@ export async function buildTopologyFromArpMac(
     }
   }
 
-  // MAC table adjacency
+  // MAC table adjacency (also picks up discovered nodes via macToDevice automatically)
   const macBuckets = (macTableResult.aggregations?.by_device as any)?.buckets || [];
   for (const devBucket of macBuckets) {
     const switchName = devBucket.key;
@@ -174,6 +245,8 @@ export async function buildTopologyFromArpMac(
     }
   }
 
-  logger.info(`Topology built: ${nodes.length} nodes, ${links.length} links (site=${site || 'all'})`);
+  const managedCount = nodes.filter(n => n.managed !== false).length;
+  const discoveredCount = nodes.length - managedCount;
+  logger.info(`Topology built: ${managedCount} managed + ${discoveredCount} discovered nodes, ${links.length} links (site=${site || 'all'})`);
   return { nodes, links, discoveredAt: new Date().toISOString(), method: 'arp-mac' };
 }

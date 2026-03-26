@@ -12,6 +12,7 @@ export function registerTopologyRoutes(router: IRouter, logger: Logger) {
           site: schema.maybe(schema.string()),
           building: schema.maybe(schema.string()),
           role: schema.maybe(schema.string()),
+          cidr: schema.maybe(schema.string()),
           from: schema.string({ defaultValue: 'now-30m' }),
           to: schema.string({ defaultValue: 'now' }),
           index: schema.string({ defaultValue: DEFAULT_SNMP_INDEX }),
@@ -20,24 +21,18 @@ export function registerTopologyRoutes(router: IRouter, logger: Logger) {
     },
     async (context, request, response) => {
       try {
-        const { site, building, role, from, to, index } = request.query;
+        const { site, building, role, cidr, from, to, index } = request.query;
         const esClient = (await context.core).elasticsearch.client.asCurrentUser;
 
         const graph = await buildTopologyFromArpMac(esClient, {
-          index,
-          from,
-          to,
-          site,
-          building,
-          role,
-          logger,
+          index, from, to, site, building, role, cidr, logger,
         });
 
         return response.ok({
           body: {
             graph,
             timestamp: new Date().toISOString(),
-            scope: { site, building, role },
+            scope: { site, building, role, cidr },
           },
         });
       } catch (err) {

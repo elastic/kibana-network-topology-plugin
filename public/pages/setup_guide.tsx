@@ -275,6 +275,11 @@ const FIELD_ROWS = [
   { field: 'arp.mac_addr',                type: 'keyword', ecs: 'Custom',     description: 'ARP neighbor MAC (ipNetToMediaPhysAddress)', example: 'aa:bb:cc:dd:ee:02' },
   { field: 'mac_table.mac_addr',          type: 'keyword', ecs: 'Custom',     description: 'Bridge forwarding table MAC (dot1dTpFdbAddress)', example: 'aa:bb:cc:dd:ee:05' },
   { field: 'mac_table.port_index',        type: 'integer', ecs: 'Custom',     description: 'Bridge port index (dot1dTpFdbPort)', example: '2' },
+  { field: 'ip_addr.address',             type: 'ip',      ecs: 'Custom',     description: 'Interface IP address (ipAdEntAddr) — used for subnet/segment lookup', example: '192.168.10.1' },
+  { field: 'ip_addr.netmask',             type: 'keyword', ecs: 'Custom',     description: 'Interface subnet mask (ipAdEntNetMask)', example: '255.255.255.0' },
+  { field: 'ip_addr.network',             type: 'keyword', ecs: 'Custom',     description: 'Computed CIDR block from address + netmask — used for segment grouping', example: '192.168.10.0/24' },
+  { field: 'ip_addr.prefix_length',       type: 'integer', ecs: 'Custom',     description: 'Prefix length derived from netmask', example: '24' },
+  { field: 'ip_addr.if_index',            type: 'integer', ecs: 'Custom',     description: 'Interface index (ipAdEntIfIndex) linking this IP to an interface row', example: '3' },
 ];
 
 const ECS_BADGE_COLOR: Record<string, string> = {
@@ -379,6 +384,14 @@ export const SetupGuide: React.FC = () => {
                   : 'Not detected — topology map will show nodes without links'}
               </EuiHealth>
             </EuiFlexItem>
+            <EuiFlexItem>
+              <EuiHealth color={health.fieldCoverage.ipAddrTable ? 'success' : 'warning'}>
+                <strong>IP address table</strong> (ip_addr.*) —{' '}
+                {health.fieldCoverage.ipAddrTable
+                  ? 'Present — network segment view is accurate'
+                  : 'Not detected — enable ipAddrTable collection for segment filtering (Step 2)'}
+              </EuiHealth>
+            </EuiFlexItem>
           </EuiFlexGroup>
         )}
       </EuiPanel>
@@ -390,20 +403,28 @@ export const SetupGuide: React.FC = () => {
         <EuiSpacer size="m" />
         <EuiText size="s">
           <p>
-            The <strong>index template</strong> applies field mappings to every <code>snmp-*</code> index,
-            ensuring IP fields are indexed as <code>ip</code> type and keyword fields support exact filtering.
-            The <strong>ingest pipeline</strong> auto-classifies device type and vendor from the raw{' '}
-            <code>observer.sys_descr</code> SNMP field, so collectors only need to ship the raw description string.
+            The <strong>index template</strong> (<code>snmp-network-o11y</code>) applies field mappings to every{' '}
+            <code>snmp-*</code> index. Critical mappings include <code>host.ip</code>, <code>ip_addr.address</code>,
+            and <code>arp.ip_addr</code> as <code>ip</code> type — this enables native CIDR term queries for segment
+            filtering. <code>ip_addr.network</code> is mapped as <code>keyword</code> so it can be aggregated
+            directly. The <strong>ingest pipeline</strong> auto-classifies device type and vendor from the raw{' '}
+            <code>observer.sys_descr</code> SNMP field.
           </p>
-          <p>Run the provided setup script (requires <code>curl</code> and Elasticsearch credentials):</p>
+          <p>
+            Apply the index template before indexing data (it only affects new indices). The template definition
+            is at <code>docs/elasticsearch/index-template.json</code>:
+          </p>
         </EuiText>
         <EuiSpacer size="s" />
         <EuiCodeBlock language="bash" isCopyable paddingSize="m">
-          {`cd /path/to/kibana-network-o11y\nbash scripts/setup.sh https://YOUR_ES_HOST:9200 elastic YOUR_PASSWORD`}
+          {`# Apply index template\ncurl -X PUT "https://YOUR_ES_HOST:9200/_index_template/snmp-network-o11y" \\\n  -H "Content-Type: application/json" \\\n  -u elastic:YOUR_PASSWORD \\\n  -d @docs/elasticsearch/index-template.json\n\n# Apply ingest pipeline (if using the enrichment pipeline)\nbash scripts/setup.sh https://YOUR_ES_HOST:9200 elastic YOUR_PASSWORD`}
         </EuiCodeBlock>
         <EuiSpacer size="s" />
         <EuiText size="xs" color="subdued">
-          <p>Or install manually: the template and pipeline JSON definitions are in <code>scripts/templates/</code>.</p>
+          <p>
+            The template must be applied before data is indexed. If you already have data in <code>snmp-*</code> indices,
+            reindex into a new index (e.g. <code>snmp-reindex</code>) with the template applied first.
+          </p>
         </EuiText>
       </EuiAccordion>
 

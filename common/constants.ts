@@ -10,6 +10,7 @@ export const API_BASE = '/api/network_topology';
 export const API_ROUTES = {
   TOPOLOGY: `${API_BASE}/topology`,
   SITES: `${API_BASE}/sites`,
+  SEGMENTS: `${API_BASE}/segments`,
   DEVICES: `${API_BASE}/devices`,
   DEVICE_DETAIL: `${API_BASE}/device`,
   INTERFACES: `${API_BASE}/interfaces`,
@@ -32,3 +33,7 @@ export const STATUS_COLORS: Record<string, string> = {
   degraded: '#F5A623',
   unknown:  '#98A2B3',
 };
+
+// A device is considered down if no SNMP data has arrived within this window.
+// Default: 5 minutes — roughly 5× the standard Logstash interface polling interval (60s).
+export const DEVICE_DOWN_THRESHOLD_MS = 5 * 60 * 1000;

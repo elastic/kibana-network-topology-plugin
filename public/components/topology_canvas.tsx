@@ -16,40 +16,78 @@ interface PlacedLink extends Omit<TopologyLink, 'source' | 'target'> {
 }
 
 const R = 20;
-const ROLE_ORDER = ['core', 'distribution', 'access', 'server'];
+// Minimum spacing between node centres in the virtual coordinate space.
+// The canvas viewport is smaller; a zoom-to-fit transform brings everything into view.
+const MIN_H_SPACING = 100; // horizontal
+const MIN_V_SPACING = 120; // vertical (row-to-row)
+const MAX_ROW_WIDTH  = 12; // max nodes per row before wrapping within the same tier
 
-// Deterministic grid: group nodes by role, sort alphabetically within each row,
-// then evenly space horizontally. No animation, no randomness.
+// Pyramid layout: device types are arranged in tiers top→bottom.
+// Each tier fills up to MAX_ROW_WIDTH nodes per row before wrapping within the tier.
+// Within a tier, nodes are sorted by link-count desc then label asc for determinism.
+// Unmanaged (ARP-discovered) nodes always occupy the bottom tier.
+const TYPE_TIERS = ['router', 'firewall', 'switch', 'server', 'ap', 'unknown'];
+
 function computeLayout(
   nodes: TopologyNode[],
+  links: TopologyLink[],
   width: number,
   height: number
 ): Map<string, { x: number; y: number }> {
-  const byRole: Record<string, TopologyNode[]> = {};
-  for (const r of [...ROLE_ORDER, 'unknown']) byRole[r] = [];
-  for (const node of nodes) {
-    const r = node.role ?? 'unknown';
-    (byRole[r] ?? byRole['unknown']).push(node);
+  const degree = new Map<string, number>();
+  for (const n of nodes) degree.set(n.id, 0);
+  for (const l of links) {
+    const src = l.source as string;
+    const tgt = l.target as string;
+    degree.set(src, (degree.get(src) ?? 0) + 1);
+    degree.set(tgt, (degree.get(tgt) ?? 0) + 1);
   }
-  for (const arr of Object.values(byRole)) arr.sort((a, b) => a.label.localeCompare(b.label));
 
-  const layers = ROLE_ORDER.filter(r => byRole[r].length > 0);
-  if (byRole['unknown'].length > 0) layers.push('unknown');
+  const unmanaged = nodes.filter(n => n.managed === false);
+  const managed   = nodes.filter(n => n.managed !== false);
 
-  const padX = width * 0.08;
-  const padYTop = height * 0.12;
-  const padYBot = height * 0.12;
-  const usableW = width - 2 * padX;
-  const usableH = height - padYTop - padYBot;
-  const layerCount = layers.length;
+  // Bucket managed nodes by type tier; unknown catches any unlisted types
+  const byType = new Map<string, TopologyNode[]>(TYPE_TIERS.map(t => [t, []]));
+  for (const n of managed) {
+    const bucket = byType.has(n.type) ? n.type : 'unknown';
+    byType.get(bucket)!.push(n);
+  }
+
+  // Sort within each tier: degree desc, then label asc
+  const sortByDegree = (a: TopologyNode, b: TopologyNode) => {
+    const d = (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0);
+    return d !== 0 ? d : a.label.localeCompare(b.label);
+  };
+  for (const group of byType.values()) group.sort(sortByDegree);
+  unmanaged.sort((a, b) => a.label.localeCompare(b.label));
+
+  // Build rows: each tier fills up to MAX_ROW_WIDTH before wrapping
+  const rows: TopologyNode[][] = [];
+  for (const t of TYPE_TIERS) {
+    const group = byType.get(t)!;
+    if (group.length === 0) continue;
+    for (let i = 0; i < group.length; i += MAX_ROW_WIDTH) rows.push(group.slice(i, i + MAX_ROW_WIDTH));
+  }
+  // Unmanaged at the bottom
+  for (let i = 0; i < unmanaged.length; i += MAX_ROW_WIDTH) rows.push(unmanaged.slice(i, i + MAX_ROW_WIDTH));
+
+  if (rows.length === 0) return new Map();
+
+  // Virtual space: expand beyond the canvas if needed to honour minimum spacing
+  const maxPerRow = Math.max(...rows.map(r => r.length));
+  const vW = Math.max(width,  maxPerRow  * MIN_H_SPACING + 80);
+  const vH = Math.max(height, rows.length * MIN_V_SPACING + 80);
+
+  const padX = 60, padY = 60;
+  const usableW = vW - 2 * padX;
+  const usableH = vH - 2 * padY;
+  const rowCount = rows.length;
 
   const positions = new Map<string, { x: number; y: number }>();
-  layers.forEach((role, li) => {
-    const rowNodes = byRole[role];
-    const y = padYTop + (layerCount <= 1 ? usableH / 2 : (li / (layerCount - 1)) * usableH);
-    const count = rowNodes.length;
-    rowNodes.forEach((node, i) => {
-      const x = count === 1 ? width / 2 : padX + (i / (count - 1)) * usableW;
+  rows.forEach((row, ri) => {
+    const y = padY + (rowCount <= 1 ? usableH / 2 : (ri / (rowCount - 1)) * usableH);
+    row.forEach((node, i) => {
+      const x = row.length === 1 ? vW / 2 : padX + (i / (row.length - 1)) * usableW;
       positions.set(node.id, { x, y });
     });
   });
@@ -62,6 +100,8 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
   const dragOverridesRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const selectedNodeRef = useRef<string | null>(selectedNodeId);
   const drawRef = useRef<(() => void) | null>(null);
+  // Persists zoom/pan across data refreshes so the canvas doesn't reset on each poll
+  const transformRef = useRef<ZoomTransform | null>(null);
 
   // Lightweight selection effect — just repaint, don't redo layout
   useEffect(() => {
@@ -77,11 +117,11 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
 
     const dpr = window.devicePixelRatio || 1;
     canvas.width = width * dpr; canvas.height = height * dpr;
-    canvas.style.width = `${width}px`; canvas.style.height = `${height}px`;
+    canvas.style.height = `${height}px`;
     ctx.scale(dpr, dpr);
 
     // Compute stable grid positions, overlay any operator-dragged overrides
-    const gridPos = computeLayout(graph.nodes, width, height);
+    const gridPos = computeLayout(graph.nodes, graph.links, width, height);
     const nodes: PlacedNode[] = graph.nodes.map(n => {
       const override = dragOverridesRef.current.get(n.id);
       const grid = gridPos.get(n.id) ?? { x: width / 2, y: height / 2 };
@@ -98,7 +138,27 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
       })
       .filter((l): l is PlacedLink => l !== null);
 
-    let transform = zoomIdentity;
+    // Recompute zoom-to-fit when canvas dimensions change (e.g. window resize);
+    // reuse saved transform only when the same dimensions re-render (data refresh).
+    const dimKey = `${width}x${height}`;
+    if (transformRef.current && (transformRef.current as any).__dimKey !== dimKey) {
+      transformRef.current = null;
+    }
+    if (!transformRef.current && nodes.length > 0) {
+      const allX = nodes.map(n => n.x);
+      const allY = nodes.map(n => n.y);
+      const minX = Math.min(...allX) - R - 16, maxX = Math.max(...allX) + R + 16;
+      const minY = Math.min(...allY) - R - 16, maxY = Math.max(...allY) + R + 48;
+      const bW = maxX - minX || 1, bH = maxY - minY || 1;
+      const fitScale = Math.min(1, width / bW, height / bH) * 0.88;
+      const t = zoomIdentity
+        .translate((width - bW * fitScale) / 2 - minX * fitScale,
+                   (height - bH * fitScale) / 2 - minY * fitScale)
+        .scale(fitScale);
+      (t as any).__dimKey = dimKey;
+      transformRef.current = t;
+    }
+    let transform = transformRef.current ?? zoomIdentity;
     let hovered: PlacedNode | null = null;
     let dragged: PlacedNode | null = null;
     let dragMoved = false;
@@ -126,11 +186,16 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
       for (const node of nodes) {
         const cfg = DEVICE_TYPE_CONFIG[node.type] || DEVICE_TYPE_CONFIG.unknown;
         const sel = node.id === selectedNodeRef.current, hov = node === hovered;
+        const unmanaged = node.managed === false;
 
         ctx!.beginPath(); ctx!.arc(node.x, node.y, R, 0, 2 * Math.PI);
-        ctx!.fillStyle = cfg.color; ctx!.globalAlpha = hov || sel ? 1 : 0.85; ctx!.fill();
+        ctx!.fillStyle = unmanaged ? '#4A4B52' : cfg.color;
+        ctx!.globalAlpha = unmanaged ? 0.4 : (hov || sel ? 1 : 0.85);
+        ctx!.fill();
+        if (unmanaged) ctx!.setLineDash([4, 3]);
         ctx!.strokeStyle = sel ? '#FFF' : (STATUS_COLORS[node.status] || '#98A2B3');
-        ctx!.lineWidth = sel ? 3 : 2; ctx!.stroke(); ctx!.globalAlpha = 1;
+        ctx!.lineWidth = sel ? 3 : 2; ctx!.stroke();
+        ctx!.setLineDash([]); ctx!.globalAlpha = 1;
 
         if (sel) {
           ctx!.beginPath(); ctx!.arc(node.x, node.y, R + 5, 0, 2 * Math.PI);
@@ -140,7 +205,7 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
 
         ctx!.fillStyle = '#FFF'; ctx!.font = 'bold 14px sans-serif';
         ctx!.textAlign = 'center'; ctx!.textBaseline = 'middle';
-        ctx!.fillText(node.type.charAt(0).toUpperCase(), node.x, node.y);
+        ctx!.fillText(unmanaged ? '?' : node.type.charAt(0).toUpperCase(), node.x, node.y);
 
         if (transform.k > 0.5) {
           ctx!.fillStyle = hov || sel ? '#FFF' : '#B0B0B0';
@@ -156,6 +221,7 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
       if (hovered) {
         const tx = hovered.x + R + 10, ty = hovered.y - 30;
         const lines = [hovered.label, `IP: ${hovered.ip}`, `Type: ${hovered.type}`, `Status: ${hovered.status}`];
+        if (hovered.managed === false) lines.push('Unmanaged (ARP-discovered)');
         ctx!.fillStyle = 'rgba(30,30,30,0.92)'; ctx!.strokeStyle = 'rgba(255,255,255,0.15)'; ctx!.lineWidth = 1;
         roundRect(ctx!, tx, ty, 160, lines.length * 16 + 16, 6); ctx!.fill(); ctx!.stroke();
         ctx!.fillStyle = '#FFF'; ctx!.textAlign = 'left'; ctx!.textBaseline = 'top';
@@ -182,8 +248,9 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
         }
         return true;
       })
-      .on('zoom', (e: { transform: ZoomTransform }) => { transform = e.transform; draw(); });
+      .on('zoom', (e: { transform: ZoomTransform }) => { transform = e.transform; transformRef.current = e.transform; draw(); });
     select(canvas).call(zoomBehavior);
+    select(canvas).call(zoomBehavior.transform, transform);
 
     canvas.addEventListener('mousemove', e => {
       const r = canvas.getBoundingClientRect();

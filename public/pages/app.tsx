@@ -5,6 +5,7 @@ import {
   EuiFlexGroup, EuiFlexItem, EuiSuperDatePicker,
 } from '@elastic/eui';
 import { SiteOverview } from './site_overview';
+import { SegmentOverview } from './segment_overview';
 import { TopologyView } from './topology_view';
 import { DeviceListView } from './device_list';
 import { SetupGuide } from './setup_guide';
@@ -13,7 +14,7 @@ type ViewMode = 'overview' | 'topology' | 'devices' | 'setup';
 
 export const NetworkTopologyApp: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('overview');
-  const [scope, setScope] = useState<{ site?: string }>({});
+  const [scope, setScope] = useState<{ site?: string; cidr?: string }>({});
   const [start, setStart] = useState('now-15m');
   const [end, setEnd] = useState('now');
   const [isPaused, setIsPaused] = useState(false);
@@ -22,6 +23,11 @@ export const NetworkTopologyApp: React.FC = () => {
 
   const handleSiteClick = useCallback((site: string) => {
     setScope({ site });
+    setViewMode('topology');
+  }, []);
+
+  const handleSegmentClick = useCallback((cidr: string) => {
+    setScope({ cidr });
     setViewMode('topology');
   }, []);
 
@@ -49,6 +55,7 @@ export const NetworkTopologyApp: React.FC = () => {
 
   const breadcrumbs = [{ text: 'Network Topology', onClick: handleBackToOverview }];
   if (scope.site) breadcrumbs.push({ text: scope.site, onClick: () => {} });
+  if (scope.cidr) breadcrumbs.push({ text: scope.cidr, onClick: () => {} });
 
   return (
     <EuiPage paddingSize="l">
@@ -87,8 +94,16 @@ export const NetworkTopologyApp: React.FC = () => {
 
         <EuiSpacer size="l" />
 
-        {viewMode === 'overview' && <SiteOverview onSiteClick={handleSiteClick} from={start} to={end} refreshKey={refreshKey} />}
-        {viewMode === 'topology' && <TopologyView site={scope.site} onBackToOverview={handleBackToOverview} from={start} to={end} refreshKey={refreshKey} />}
+        {viewMode === 'overview' && (
+          <>
+            <SiteOverview onSiteClick={handleSiteClick} from={start} to={end} refreshKey={refreshKey} />
+            <EuiSpacer size="xl" />
+            <EuiTitle size="s"><h2>Network Segments</h2></EuiTitle>
+            <EuiSpacer size="m" />
+            <SegmentOverview onSegmentClick={handleSegmentClick} from={start} to={end} refreshKey={refreshKey} />
+          </>
+        )}
+        {viewMode === 'topology' && <TopologyView site={scope.site} cidr={scope.cidr} onBackToOverview={handleBackToOverview} from={start} to={end} refreshKey={refreshKey} />}
         {viewMode === 'devices' && <DeviceListView site={scope.site} from={start} to={end} refreshKey={refreshKey} />}
         {viewMode === 'setup' && <SetupGuide />}
       </EuiPageBody>

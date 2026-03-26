@@ -20,22 +20,95 @@ $CURL -X PUT "${ES_URL}/_ingest/pipeline/snmp-device-enrichment" -H 'Content-Typ
 }'
 echo " done."
 
-echo "[2/3] Creating index template: snmp-data"
-$CURL -X PUT "${ES_URL}/_index_template/snmp-data" -H 'Content-Type: application/json' -d '
+# The template name matches what setup.ts checks for (API_ROUTES.SETUP_HEALTH).
+# ip_addr.address and arp.ip_addr are mapped as ip type so native CIDR term queries
+# work: { "term": { "ip_addr.address": "192.168.10.0/24" } } matches all interface
+# IPs inside that subnet — this is how segment filtering resolves device membership.
+# ip_addr.network is keyword (not text) so terms aggregations work without .keyword.
+echo "[2/3] Creating index template: snmp-network-o11y"
+$CURL -X PUT "${ES_URL}/_index_template/snmp-network-o11y" -H 'Content-Type: application/json' -d '
 {
-  "index_patterns": ["snmp-*","logstash-snmp-*"],
+  "index_patterns": ["snmp-*", "logstash-snmp-*"],
   "priority": 200,
   "template": {
-    "settings": { "number_of_shards":1, "number_of_replicas":0, "index.default_pipeline":"snmp-device-enrichment" },
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "index.default_pipeline": "snmp-device-enrichment"
+    },
     "mappings": {
+      "dynamic": true,
       "properties": {
-        "@timestamp":{"type":"date"},
-        "host":{"properties":{"name":{"type":"keyword"},"ip":{"type":"ip"},"mac":{"type":"keyword"},"type":{"type":"keyword"}}},
-        "observer":{"properties":{"vendor":{"type":"keyword"},"type":{"type":"keyword"},"sys_descr":{"type":"text","fields":{"keyword":{"type":"keyword"}}},"sys_object_id":{"type":"keyword"},"os":{"properties":{"full":{"type":"keyword"}}}}},
-        "network":{"properties":{"site":{"type":"keyword"},"building":{"type":"keyword"},"floor":{"type":"keyword"},"rack":{"type":"keyword"},"role":{"type":"keyword"},"vlan":{"properties":{"id":{"type":"integer"},"name":{"type":"keyword"}}}}},
-        "interface":{"properties":{"name":{"type":"keyword"},"id":{"type":"keyword"},"speed":{"type":"long"},"status":{"properties":{"admin":{"type":"keyword"},"oper":{"type":"keyword"}}},"traffic":{"properties":{"in":{"properties":{"bytes":{"type":"long"}}},"out":{"properties":{"bytes":{"type":"long"}}}}},"errors":{"properties":{"in":{"type":"long"},"out":{"type":"long"}}}}},
-        "arp":{"properties":{"ip_addr":{"type":"ip"},"mac_addr":{"type":"keyword"},"interface_index":{"type":"integer"}}},
-        "mac_table":{"properties":{"mac_addr":{"type":"keyword"},"port_index":{"type":"integer"},"status":{"type":"keyword"}}}
+        "@timestamp": { "type": "date" },
+        "host": {
+          "properties": {
+            "name": { "type": "keyword" },
+            "ip":   { "type": "ip" },
+            "mac":  { "type": "keyword" },
+            "type": { "type": "keyword" }
+          }
+        },
+        "observer": {
+          "properties": {
+            "vendor":    { "type": "keyword" },
+            "type":      { "type": "keyword" },
+            "sys_descr": { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+            "os":        { "properties": { "full": { "type": "keyword" } } }
+          }
+        },
+        "network": {
+          "properties": {
+            "site":     { "type": "keyword" },
+            "building": { "type": "keyword" },
+            "role":     { "type": "keyword" }
+          }
+        },
+        "interface": {
+          "properties": {
+            "name":  { "type": "keyword" },
+            "speed": { "type": "long" },
+            "status": {
+              "properties": {
+                "admin": { "type": "keyword" },
+                "oper":  { "type": "keyword" }
+              }
+            },
+            "traffic": {
+              "properties": {
+                "in":  { "properties": { "bytes": { "type": "long" } } },
+                "out": { "properties": { "bytes": { "type": "long" } } }
+              }
+            },
+            "errors": {
+              "properties": {
+                "in":  { "type": "long" },
+                "out": { "type": "long" }
+              }
+            }
+          }
+        },
+        "ip_addr": {
+          "properties": {
+            "address":       { "type": "ip" },
+            "netmask":       { "type": "keyword" },
+            "network":       { "type": "keyword" },
+            "prefix_length": { "type": "integer" },
+            "if_index":      { "type": "integer" }
+          }
+        },
+        "arp": {
+          "properties": {
+            "ip_addr":  { "type": "ip" },
+            "mac_addr": { "type": "keyword" }
+          }
+        },
+        "mac_table": {
+          "properties": {
+            "mac_addr":   { "type": "keyword" },
+            "port_index": { "type": "integer" },
+            "status":     { "type": "integer" }
+          }
+        }
       }
     }
   }

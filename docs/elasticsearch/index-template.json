@@ -1,0 +1,100 @@
+{
+  "name": "snmp-network-o11y",
+  "_meta": {
+    "description": "Index template for kibana-network-o11y SNMP data. Apply with: PUT _index_template/snmp-network-o11y"
+  },
+  "index_patterns": ["snmp-*"],
+  "priority": 200,
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 1,
+      "index.lifecycle.name": "snmp-ilm-policy",
+      "index.lifecycle.rollover_alias": "snmp"
+    },
+    "mappings": {
+      "dynamic": true,
+      "_source": { "enabled": true },
+      "properties": {
+        "@timestamp": { "type": "date" },
+
+        "host": {
+          "properties": {
+            "name": { "type": "keyword" },
+            "ip":   { "type": "ip" },
+            "mac":  { "type": "keyword" },
+            "type": { "type": "keyword" }
+          }
+        },
+
+        "observer": {
+          "properties": {
+            "vendor":     { "type": "keyword" },
+            "sys_descr":  {
+              "type": "text",
+              "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+            }
+          }
+        },
+
+        "network": {
+          "properties": {
+            "site":     { "type": "keyword" },
+            "building": { "type": "keyword" },
+            "role":     { "type": "keyword" }
+          }
+        },
+
+        "interface": {
+          "properties": {
+            "name":  { "type": "keyword" },
+            "speed": { "type": "long" },
+            "status": {
+              "properties": {
+                "admin": { "type": "keyword" },
+                "oper":  { "type": "keyword" }
+              }
+            },
+            "traffic": {
+              "properties": {
+                "in":  { "properties": { "bytes": { "type": "long" } } },
+                "out": { "properties": { "bytes": { "type": "long" } } }
+              }
+            },
+            "errors": {
+              "properties": {
+                "in":  { "type": "long" },
+                "out": { "type": "long" }
+              }
+            }
+          }
+        },
+
+        "ip_addr": {
+          "properties": {
+            "address":       { "type": "ip" },
+            "netmask":       { "type": "keyword" },
+            "network":       { "type": "keyword" },
+            "prefix_length": { "type": "integer" },
+            "if_index":      { "type": "integer" }
+          }
+        },
+
+        "arp": {
+          "properties": {
+            "ip_addr":  { "type": "ip" },
+            "mac_addr": { "type": "keyword" }
+          }
+        },
+
+        "mac_table": {
+          "properties": {
+            "mac_addr":   { "type": "keyword" },
+            "port_index": { "type": "integer" },
+            "status":     { "type": "integer" }
+          }
+        }
+      }
+    }
+  }
+}

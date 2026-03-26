@@ -146,6 +146,79 @@
     field = "dot1dTpFdbStatus"
     dest  = "mac_table.status"
 
+# ── IP address table (interface IPs + netmasks → real subnets) ───────────────
+# Polls at 300s — subnet assignments change very rarely.
+[[inputs.snmp]]
+  agents    = ["udp://DEVICE_IP:161"]
+  version   = 2
+  community = "public"
+  name      = "snmp_ip_addr"
+  interval  = "300s"
+
+  [[inputs.snmp.field]]
+    name = "sysName"
+    oid  = "SNMPv2-MIB::sysName.0"
+
+  # Walk the entire ipAddrTable — one row per interface IP
+  [[inputs.snmp.table]]
+    name         = "ipAddrTable"
+    oid          = "IP-MIB::ipAddrTable"
+    inherit_tags = ["sysName", "agent_host"]
+
+[[processors.rename]]
+  namepass = ["ipAddrTable"]
+  [[processors.rename.replace]]
+    field = "sysName"
+    dest  = "host.name"
+  [[processors.rename.replace]]
+    tag   = "agent_host"
+    dest  = "host.ip"
+  [[processors.rename.replace]]
+    tag   = "ipAdEntAddr"
+    dest  = "ip_addr.address"
+  [[processors.rename.replace]]
+    field = "ipAdEntNetMask"
+    dest  = "ip_addr.netmask"
+  [[processors.rename.replace]]
+    field = "ipAdEntIfIndex"
+    dest  = "ip_addr.if_index"
+
+# Compute network CIDR from the renamed address + netmask fields.
+# Starlark is available in Telegraf 1.14+.
+[[processors.starlark]]
+  namepass = ["ipAddrTable"]
+  source = """
+def apply(metric):
+    addr = metric.tags.get("ip_addr.address", "")
+    mask = metric.fields.get("ip_addr.netmask", "")
+    if not addr or not mask:
+        return metric
+
+    # Skip loopback, link-local, multicast, unspecified
+    first = int(addr.split(".")[0])
+    if first == 0 or first == 127 or first >= 224:
+        return None
+    if addr.startswith("169.254."):
+        return None
+
+    addr_p = [int(x) for x in addr.split(".")]
+    mask_p = [int(x) for x in mask.split(".")]
+    net_p  = [addr_p[i] & mask_p[i] for i in range(4)]
+
+    # Count set bits in mask for prefix length
+    prefix = 0
+    for m in mask_p:
+        b = m
+        while b > 0:
+            prefix += b & 1
+            b = b >> 1
+
+    cidr = "{}.{}.{}.{}/{}".format(net_p[0], net_p[1], net_p[2], net_p[3], prefix)
+    metric.fields["ip_addr.network"]       = cidr
+    metric.fields["ip_addr.prefix_length"] = prefix
+    return metric
+"""
+
 # ── Add static site/role tags ─────────────────────────────────────────────────
 [[processors.override]]
   [processors.override.tags]

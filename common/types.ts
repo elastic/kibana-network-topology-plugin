@@ -43,6 +43,8 @@ export interface TopologyNode {
   role?: NetworkRole;
   x?: number;
   y?: number;
+  /** false = discovered from a neighbor's ARP table only; no direct SNMP polling data */
+  managed?: boolean;
 }
 
 export interface TopologyLink {
@@ -73,6 +75,18 @@ export interface SiteHealth {
   topIssues: string[];
 }
 
+export interface SegmentHealth {
+  /** CIDR notation, e.g. "192.168.1.0/24" */
+  segment: string;
+  deviceCount: number;
+  upCount: number;
+  downCount: number;
+  degradedCount: number;
+  /** ARP-discovered IPs in this subnet not being directly polled */
+  discoveredCount: number;
+  worstStatus: DeviceStatus;
+}
+
 export interface TopologyResponse {
   graph: TopologyGraph;
   timestamp: string;
@@ -81,6 +95,12 @@ export interface TopologyResponse {
 
 export interface SitesResponse {
   sites: SiteHealth[];
+  totalDevices: number;
+  timestamp: string;
+}
+
+export interface SegmentsResponse {
+  segments: SegmentHealth[];
   totalDevices: number;
   timestamp: string;
 }
@@ -103,5 +123,5 @@ export interface SetupHealthResponse {
   indexTemplate: { installed: boolean };
   ingestPipeline: { installed: boolean };
   recentData: { hasData: boolean; deviceCount: number; siteCount: number };
-  fieldCoverage: { interfaces: boolean; arpTable: boolean; macTable: boolean };
+  fieldCoverage: { interfaces: boolean; arpTable: boolean; macTable: boolean; ipAddrTable: boolean };
 }

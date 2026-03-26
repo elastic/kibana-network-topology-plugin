@@ -1,7 +1,7 @@
 import type { IRouter, Logger } from '@kbn/core/server';
 import { schema } from '@kbn/config-schema';
 import { buildEsQuery, type Filter, type Query } from '@kbn/es-query';
-import { API_ROUTES, DEFAULT_SNMP_INDEX } from '../../common';
+import { API_ROUTES, DEFAULT_SNMP_INDEX, DEVICE_DOWN_THRESHOLD_MS } from '../../common';
 
 export function registerDevicesRoutes(router: IRouter, logger: Logger) {
   // GET /api/network_topology/devices
@@ -96,9 +96,11 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
           const src = b.latest?.hits?.hits?.[0]?._source || {};
           const downCount = b.down_interfaces?.count?.value || 0;
           const ifCount = b.interface_count?.value || 0;
+          const lastSeen = b.last_seen?.value_as_string || '';
+          const msSince = lastSeen ? Date.now() - new Date(lastSeen).getTime() : Infinity;
           let status = 'up';
-          if (downCount > ifCount * 0.5) status = 'down';
-          else if (downCount > 0) status = 'degraded';
+          if (msSince > DEVICE_DOWN_THRESHOLD_MS) status = 'down';
+          else if (ifCount > 0 && downCount === ifCount) status = 'degraded';
 
           return {
             id: b.key, name: b.key,
@@ -107,7 +109,7 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
             status, site: src.network?.site || 'Ungrouped',
             building: src.network?.building || '', role: src.network?.role || '',
             interfaceCount: ifCount, downInterfaceCount: downCount,
-            lastSeen: b.last_seen?.value_as_string || '',
+            lastSeen,
           };
         });
 
@@ -176,12 +178,14 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
               terms: { field: 'arp.ip_addr', size: 500 },
               aggs: { mac: { terms: { field: 'arp.mac_addr', size: 1 } } },
             },
+            last_seen: { max: { field: '@timestamp' } },
           },
         });
 
         const hit = (result.aggregations?.device_info as any)?.hits?.hits?.[0]?._source || {};
         const ifBuckets = (result.aggregations?.interfaces as any)?.buckets || [];
         const arpBuckets = (result.aggregations?.arp_neighbors as any)?.buckets || [];
+        const lastSeen = (result.aggregations?.last_seen as any)?.value_as_string || '';
 
         const interfaces = ifBuckets.map((b: any) => ({
           name: b.key, id: b.key,
@@ -193,9 +197,10 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
         }));
 
         const downCount = interfaces.filter((i: any) => i.operStatus === 'down').length;
+        const msSince = lastSeen ? Date.now() - new Date(lastSeen).getTime() : Infinity;
         let status = 'up';
-        if (downCount > interfaces.length * 0.5) status = 'down';
-        else if (downCount > 0) status = 'degraded';
+        if (msSince > DEVICE_DOWN_THRESHOLD_MS) status = 'down';
+        else if (interfaces.length > 0 && downCount === interfaces.length) status = 'degraded';
 
         return response.ok({
           body: {
@@ -207,7 +212,7 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
               site: hit.network?.site || '', building: hit.network?.building || '',
               role: hit.network?.role || '',
               interfaceCount: interfaces.length, downInterfaceCount: downCount,
-              lastSeen: new Date().toISOString(),
+              lastSeen,
             },
             interfaces,
             neighbors: arpBuckets.map((b: any) => ({

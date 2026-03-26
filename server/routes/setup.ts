@@ -13,7 +13,7 @@ export function registerSetupRoutes(router: IRouter, logger: Logger) {
 
         const [templateResult, pipelineResult, dataResult, coverageResult] = await Promise.allSettled([
           // 1. Index template
-          esClient.indices.existsIndexTemplate({ name: 'snmp-data' }),
+          esClient.indices.existsIndexTemplate({ name: 'snmp-network-o11y' }),
 
           // 2. Ingest pipeline
           esClient.ingest.getPipeline({ id: 'snmp-device-enrichment' }),
@@ -37,9 +37,10 @@ export function registerSetupRoutes(router: IRouter, logger: Logger) {
             ignore_unavailable: true,
             query: { bool: { filter: [{ range: { '@timestamp': { gte: 'now-1h' } } }] } },
             aggs: {
-              has_interfaces: { filter: { exists: { field: 'interface.name' } } },
-              has_arp: { filter: { exists: { field: 'arp.mac_addr' } } },
-              has_mac_table: { filter: { exists: { field: 'mac_table.mac_addr' } } },
+              has_interfaces:   { filter: { exists: { field: 'interface.name' } } },
+              has_arp:          { filter: { exists: { field: 'arp.mac_addr' } } },
+              has_mac_table:    { filter: { exists: { field: 'mac_table.mac_addr' } } },
+              has_ip_addr_table: { filter: { exists: { field: 'ip_addr.network' } } },
             },
           }),
         ]);
@@ -63,13 +64,16 @@ export function registerSetupRoutes(router: IRouter, logger: Logger) {
         const hasMacTable = coverageResult.status === 'fulfilled'
           ? ((coverageResult.value.aggregations?.has_mac_table as any)?.doc_count ?? 0) > 0
           : false;
+        const hasIpAddrTable = coverageResult.status === 'fulfilled'
+          ? ((coverageResult.value.aggregations?.has_ip_addr_table as any)?.doc_count ?? 0) > 0
+          : false;
 
         return response.ok({
           body: {
             indexTemplate: { installed: indexTemplate },
             ingestPipeline: { installed: ingestPipeline },
             recentData: { hasData: deviceCount > 0, deviceCount, siteCount },
-            fieldCoverage: { interfaces: hasInterfaces, arpTable: hasArp, macTable: hasMacTable },
+            fieldCoverage: { interfaces: hasInterfaces, arpTable: hasArp, macTable: hasMacTable, ipAddrTable: hasIpAddrTable },
           },
         });
       } catch (err) {

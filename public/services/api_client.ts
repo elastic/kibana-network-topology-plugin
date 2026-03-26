@@ -1,7 +1,7 @@
 import type { HttpSetup } from '@kbn/core/public';
 import { API_ROUTES } from '../../common';
 import type {
-  SitesResponse, TopologyResponse, DevicesResponse, DeviceDetailResponse, SetupHealthResponse,
+  SitesResponse, SegmentsResponse, TopologyResponse, DevicesResponse, DeviceDetailResponse, SetupHealthResponse,
 } from '../../common';
 
 export class ApiClient {
@@ -11,8 +11,12 @@ export class ApiClient {
     return this.http.get(API_ROUTES.SITES, { query: { from: 'now-15m', to: 'now', ...params } });
   }
 
+  async fetchSegments(params: { from?: string; to?: string; site?: string } = {}): Promise<SegmentsResponse> {
+    return this.http.get(API_ROUTES.SEGMENTS, { query: { from: 'now-15m', to: 'now', ...params } });
+  }
+
   async fetchTopology(params: {
-    site?: string; building?: string; role?: string; from?: string; to?: string;
+    site?: string; building?: string; role?: string; cidr?: string; from?: string; to?: string;
   }): Promise<TopologyResponse> {
     return this.http.get(API_ROUTES.TOPOLOGY, {
       query: { from: 'now-30m', to: 'now', ...params },
