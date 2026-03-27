@@ -3,7 +3,7 @@
   "_meta": {
     "description": "Index template for kibana-network-o11y SNMP data. Apply with: PUT _index_template/snmp-network-o11y"
   },
-  "index_patterns": ["snmp-*"],
+  "index_patterns": ["snmp-*", "logstash-snmp-*"],
   "priority": 200,
   "template": {
     "settings": {
@@ -30,10 +30,12 @@
         "observer": {
           "properties": {
             "vendor":     { "type": "keyword" },
+            "type":       { "type": "keyword" },
             "sys_descr":  {
               "type": "text",
               "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
-            }
+            },
+            "os": { "properties": { "full": { "type": "keyword" } } }
           }
         },
 
@@ -82,8 +84,9 @@
 
         "arp": {
           "properties": {
-            "ip_addr":  { "type": "ip" },
-            "mac_addr": { "type": "keyword" }
+            "ip_addr":         { "type": "ip" },
+            "mac_addr":        { "type": "keyword" },
+            "interface_index": { "type": "integer" }
           }
         },
 
@@ -91,7 +94,7 @@
           "properties": {
             "mac_addr":   { "type": "keyword" },
             "port_index": { "type": "integer" },
-            "status":     { "type": "integer" }
+            "status":     { "type": "keyword" }
           }
         }
       }

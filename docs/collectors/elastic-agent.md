@@ -40,10 +40,15 @@ PUT _ingest/pipeline/snmp-elastic-agent-remap
     { "rename": { "field": "snmp.ifOutOctets",        "target_field": "interface.traffic.out.bytes",    "ignore_missing": true } },
     { "rename": { "field": "snmp.ifInErrors",         "target_field": "interface.errors.in",            "ignore_missing": true } },
     { "rename": { "field": "snmp.ifOutErrors",        "target_field": "interface.errors.out",           "ignore_missing": true } },
-    { "rename": { "field": "snmp.ipNetToMediaPhysAddress", "target_field": "arp.mac_addr",              "ignore_missing": true } },
-    { "rename": { "field": "snmp.ipNetToMediaNetAddress",  "target_field": "arp.ip_addr",               "ignore_missing": true } },
-    { "rename": { "field": "snmp.dot1dTpFdbAddress",  "target_field": "mac_table.mac_addr",             "ignore_missing": true } },
-    { "rename": { "field": "snmp.dot1dTpFdbPort",     "target_field": "mac_table.port_index",           "ignore_missing": true } },
+    { "rename": { "field": "snmp.ipNetToMediaPhysAddress", "target_field": "arp.mac_addr",           "ignore_missing": true } },
+    { "rename": { "field": "snmp.ipNetToMediaNetAddress",  "target_field": "arp.ip_addr",           "ignore_missing": true } },
+    { "rename": { "field": "snmp.ipNetToMediaIfIndex",     "target_field": "arp.interface_index",    "ignore_missing": true } },
+    { "rename": { "field": "snmp.dot1dTpFdbAddress",  "target_field": "mac_table.mac_addr",        "ignore_missing": true } },
+    { "rename": { "field": "snmp.dot1dTpFdbPort",     "target_field": "mac_table.port_index",      "ignore_missing": true } },
+    { "rename": { "field": "snmp.dot1dTpFdbStatus",   "target_field": "mac_table.status",          "ignore_missing": true } },
+    { "rename": { "field": "snmp.ipAdEntAddr",        "target_field": "ip_addr.address",           "ignore_missing": true } },
+    { "rename": { "field": "snmp.ipAdEntNetMask",     "target_field": "ip_addr.netmask",           "ignore_missing": true } },
+    { "rename": { "field": "snmp.ipAdEntIfIndex",     "target_field": "ip_addr.if_index",          "ignore_missing": true } },
     { "pipeline": { "name": "snmp-device-enrichment", "ignore_missing_pipeline": true } }
   ]
 }
@@ -64,9 +69,14 @@ will not cover `logs-snmp.*` unless you either:
 
 ## Notes
 
-- The Elastic Agent SNMP integration does not currently collect ARP or MAC
-  forwarding tables. For topology link discovery you will need a supplementary
-  collector (Logstash or Telegraf) for those document types.
-- Vendor and `host.type` enrichment is handled by the `snmp-device-enrichment`
-  pipeline — make sure it is invoked either as part of the remap pipeline (as
-  shown above) or as the data stream's default pipeline.
+- The Elastic Agent SNMP integration does not currently collect ARP tables, MAC
+  forwarding tables, or IP address tables. For topology link discovery and
+  network segment features you will need a supplementary collector (Logstash or
+  Telegraf) for those document types.
+- The `ip_addr.network` (CIDR) field must be computed from `ip_addr.address` and
+  `ip_addr.netmask` at ingest time. The remap pipeline above copies the raw
+  values; you will need an additional script processor to compute the CIDR if
+  Elastic Agent gains ipAddrTable support in the future.
+- `host.type` should be set explicitly in the collector config where possible.
+  The `snmp-device-enrichment` pipeline infers it from `observer.sys_descr` as
+  a fallback, but vendor string matching is unreliable across device models.

@@ -98,15 +98,16 @@ $CURL -X PUT "${ES_URL}/_index_template/snmp-network-o11y" -H 'Content-Type: app
         },
         "arp": {
           "properties": {
-            "ip_addr":  { "type": "ip" },
-            "mac_addr": { "type": "keyword" }
+            "ip_addr":         { "type": "ip" },
+            "mac_addr":        { "type": "keyword" },
+            "interface_index": { "type": "integer" }
           }
         },
         "mac_table": {
           "properties": {
             "mac_addr":   { "type": "keyword" },
             "port_index": { "type": "integer" },
-            "status":     { "type": "integer" }
+            "status":     { "type": "keyword" }
           }
         }
       }

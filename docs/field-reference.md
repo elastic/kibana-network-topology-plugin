@@ -30,7 +30,7 @@ ECS `host` fields identify the monitored network device.
 | `host.name` | keyword | Core ECS | Device hostname (SNMP `sysName`) | `hq-core-rtr-01` |
 | `host.ip` | ip | Core ECS | Primary management IP address | `10.1.1.2` |
 | `host.mac` | keyword | Core ECS | Primary MAC address | `aa:bb:cc:dd:ee:01` |
-| `host.type` | keyword | ECS ext. | Device category — inferred by the ingest pipeline from `observer.sys_descr`. ECS defines `host.type` for OS-level categories; this plugin extends it to network device roles. | `router`, `switch`, `firewall`, `server`, `ap`, `unknown` |
+| `host.type` | keyword | ECS ext. | Device category — set explicitly in the Logstash/Telegraf collector config. The ingest pipeline can infer it from `observer.sys_descr` as a fallback when unset. | `router`, `switch`, `firewall`, `server`, `ap`, `unknown` |
 
 ---
 
@@ -56,11 +56,7 @@ justified custom extensions within that namespace.
 |-------|------|-----------|-------------|---------|
 | `network.site` | keyword | ECS ext. | Site or datacenter identifier. Defaults to `Ungrouped` if absent (set by ingest pipeline). | `HQ-DC1`, `Branch-NYC`, `Branch-CHI` |
 | `network.building` | keyword | ECS ext. | Building within the site | `Main`, `Annex`, `Tower-B` |
-| `network.floor` | keyword | ECS ext. | Floor within the building | `1`, `2`, `B1` |
-| `network.rack` | keyword | ECS ext. | Rack identifier within the floor | `Rack-01`, `A3` |
 | `network.role` | keyword | ECS ext. | Network tier — used for topology hierarchy. Controls the vertical position of nodes in the topology map. | `core`, `distribution`, `access`, `server` |
-| `network.vlan.id` | integer | ECS ext. | VLAN ID | `100`, `200` |
-| `network.vlan.name` | keyword | ECS ext. | VLAN name | `management`, `production` |
 
 ---
 
@@ -72,7 +68,6 @@ These fields are plugin-defined under a consistent `interface.*` namespace.
 | Field | Type | ECS Status | SNMP MIB OID | Description | Example |
 |-------|------|-----------|--------------|-------------|---------|
 | `interface.name` | keyword | Custom | `ifDescr` (1.3.6.1.2.1.2.2.1.2) | Interface name | `Gi0/0/0`, `eth0`, `xe-0/0/0` |
-| `interface.id` | keyword | Custom | `ifIndex` (1.3.6.1.2.1.2.2.1.1) | Interface index | `1`, `2`, `10001` |
 | `interface.speed` | long | Custom | `ifSpeed` (1.3.6.1.2.1.2.2.1.5) | Interface speed in bits/sec | `10000000000` (10 Gbps) |
 | `interface.status.admin` | keyword | Custom | `ifAdminStatus` (1.3.6.1.2.1.2.2.1.7) | Administrative status | `up`, `down` |
 | `interface.status.oper` | keyword | Custom | `ifOperStatus` (1.3.6.1.2.1.2.2.1.8) | Operational status | `up`, `down`, `testing` |
@@ -112,9 +107,27 @@ Used to infer layer-2 adjacency between switches in the topology map.
 
 ---
 
+## `ip_addr.*` — IP Address Table Entries (Custom)
+
+Populated from the IP-MIB `ipAddrTable` (RFC 1213, OID `1.3.6.1.2.1.4.20`).
+Used to determine which network segments (CIDRs) each device participates in.
+
+| Field | Type | ECS Status | SNMP MIB OID | Description | Example |
+|-------|------|-----------|--------------|-------------|---------|
+| `ip_addr.address` | ip | Custom | `ipAdEntAddr` (.1) | Interface IP address — used for CIDR-based segment lookups | `192.168.10.1` |
+| `ip_addr.netmask` | keyword | Custom | `ipAdEntNetMask` (.3) | Interface subnet mask | `255.255.255.0` |
+| `ip_addr.network` | keyword | Custom | *computed* | CIDR block derived from address & netmask — used for segment grouping | `192.168.10.0/24` |
+| `ip_addr.prefix_length` | integer | Custom | *computed* | Prefix length derived from netmask | `24` |
+| `ip_addr.if_index` | integer | Custom | `ipAdEntIfIndex` (.2) | Interface index linking this IP to an interface row | `3` |
+
+> **Note:** Loopback (127.x), link-local (169.254.x), multicast (≥224), and unspecified (0.x)
+> addresses are filtered out at collection time.
+
+---
+
 ## Document Types
 
-A single SNMP poll cycle produces **three document types** per device,
+A single SNMP poll cycle produces **four document types** per device,
 all indexed into `snmp-YYYY.MM.dd`:
 
 | Document type | Distinguishing field | Purpose |
@@ -122,8 +135,9 @@ all indexed into `snmp-YYYY.MM.dd`:
 | Interface metrics | `interface.name` present | Per-interface status, speed, traffic, errors |
 | ARP entry | `arp.mac_addr` present | Layer-3 neighbor discovery |
 | MAC table entry | `mac_table.mac_addr` present | Layer-2 forwarding topology |
+| IP address entry | `ip_addr.address` present | Interface IPs and subnet membership for segment views |
 
-All three share the same `host.*`, `observer.*`, and `network.*` fields to identify
+All four share the same `host.*`, `observer.*`, and `network.*` fields to identify
 which device the data belongs to.
 
 ---
@@ -132,10 +146,12 @@ which device the data belongs to.
 
 The pipeline performs the following on every incoming document:
 
-1. **Vendor detection** — regex match on `observer.sys_descr` → sets `observer.vendor`
+1. **Device type default** — sets `host.type = "unknown"` if the field is absent
+2. **Site default** — sets `network.site = "Ungrouped"` if the field is absent
+3. **Device type inference** (fallback) — if `host.type` is still `"unknown"`, keyword match on
+   `observer.sys_descr` → sets `host.type` (router, switch, firewall, ap, server).
+   This is a best-effort fallback; setting `host.type` explicitly in the collector config is preferred.
+4. **Vendor detection** — regex match on `observer.sys_descr` → sets `observer.vendor`
    (covers Cisco, Juniper, Arista, Fortinet, Palo Alto, HPE, Aruba)
-2. **Device type inference** — keyword match on `observer.sys_descr` → sets `host.type`
-   (router, switch, firewall, ap, server)
-3. **Site default** — sets `network.site = "Ungrouped"` if the field is absent
 
-See `scripts/templates/pipeline-snmp-device-enrichment.json` for the full pipeline definition.
+The pipeline is created by `scripts/setup_elasticsearch.sh`.

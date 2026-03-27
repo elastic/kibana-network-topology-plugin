@@ -17,8 +17,17 @@ export const TopologyView: React.FC<Props> = ({ site, cidr, onBackToOverview, fr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
+  const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(0);
+
+  const toggleType = useCallback((type: string) => {
+    setHiddenTypes(prev => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type); else next.add(type);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -69,17 +78,30 @@ export const TopologyView: React.FC<Props> = ({ site, cidr, onBackToOverview, fr
         </EuiFlexItem>
         <EuiFlexItem />
         <EuiFlexItem grow={false}>
-          <EuiFlexGroup gutterSize="s" alignItems="center">
-            {Object.entries(DEVICE_TYPE_CONFIG).filter(([k]) => k !== 'unknown').map(([k, c]) => (
-              <EuiFlexItem grow={false} key={k}><EuiBadge color={c.color}>{k}</EuiBadge></EuiFlexItem>
-            ))}
+          <EuiFlexGroup gutterSize="xs" alignItems="center">
+            {([...Object.keys(DEVICE_TYPE_CONFIG), 'discovered']).map(type => {
+              const hidden = hiddenTypes.has(type);
+              const color = type === 'discovered' ? '#4A4B52' : DEVICE_TYPE_CONFIG[type]?.color;
+              return (
+                <EuiFlexItem grow={false} key={type}>
+                  <EuiBadge
+                    color={hidden ? 'default' : color}
+                    onClick={() => toggleType(type)}
+                    onClickAriaLabel={`Toggle ${type} node visibility`}
+                    style={{ cursor: 'pointer', opacity: hidden ? 0.45 : 1, transition: 'opacity 0.15s', userSelect: 'none' }}
+                  >
+                    {type}
+                  </EuiBadge>
+                </EuiFlexItem>
+              );
+            })}
           </EuiFlexGroup>
         </EuiFlexItem>
       </EuiFlexGroup>
       <EuiSpacer size="m" />
       <div ref={containerRef}>
         <EuiPanel hasBorder hasShadow={false} paddingSize="none" style={{ overflow: 'hidden' }}>
-          {canvasWidth > 0 && <TopologyCanvas graph={graph} width={canvasWidth} height={700} onNodeClick={handleNodeClick} selectedNodeId={selectedDevice} />}
+          {canvasWidth > 0 && <TopologyCanvas graph={graph} width={canvasWidth} height={700} onNodeClick={handleNodeClick} selectedNodeId={selectedDevice} hiddenTypes={hiddenTypes} />}
         </EuiPanel>
       </div>
       {selectedDevice && <DeviceFlyout deviceId={selectedDevice} from={from} to={to} onClose={handleCloseFlyout} />}

@@ -96,6 +96,8 @@ export interface TopologyResponse {
 export interface SitesResponse {
   sites: SiteHealth[];
   totalDevices: number;
+  /** Unique IPs seen via ARP across all sites */
+  discoveredCount: number;
   timestamp: string;
 }
 

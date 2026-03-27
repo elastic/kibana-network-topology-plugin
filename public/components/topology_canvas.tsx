@@ -8,6 +8,8 @@ import { DEVICE_TYPE_CONFIG, STATUS_COLORS } from '../../common';
 interface Props {
   graph: TopologyGraph; width: number; height: number;
   onNodeClick: (nodeId: string) => void; selectedNodeId: string | null;
+  /** Set of type keys whose nodes should be hidden. Use 'discovered' for unmanaged ARP nodes. */
+  hiddenTypes?: Set<string>;
 }
 
 interface PlacedNode extends TopologyNode { x: number; y: number; }
@@ -94,7 +96,7 @@ function computeLayout(
   return positions;
 }
 
-export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeClick, selectedNodeId }) => {
+export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeClick, selectedNodeId, hiddenTypes }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Stores positions the operator has manually dragged — survive data refreshes
   const dragOverridesRef = useRef<Map<string, { x: number; y: number }>>(new Map());
@@ -102,6 +104,8 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
   const drawRef = useRef<(() => void) | null>(null);
   // Persists zoom/pan across data refreshes so the canvas doesn't reset on each poll
   const transformRef = useRef<ZoomTransform | null>(null);
+  // Stable string key for effect deps — changing hidden types triggers re-layout + re-fit
+  const hiddenTypesKey = hiddenTypes ? [...hiddenTypes].sort().join(',') : '';
 
   // Lightweight selection effect — just repaint, don't redo layout
   useEffect(() => {
@@ -120,16 +124,42 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
     canvas.style.height = `${height}px`;
     ctx.scale(dpr, dpr);
 
+    // Filter nodes and links by current visibility toggles
+    // Step 1: remove nodes whose type is toggled off
+    const typeFiltered = graph.nodes.filter(n => {
+      const key = n.managed === false ? 'discovered' : n.type;
+      return !(hiddenTypes?.has(key));
+    });
+    // Step 2: prune orphaned discovered nodes — a discovered node is only
+    // kept if it has at least one link to a visible managed node. This
+    // cascades: hiding APs also hides phones/clients that only appeared
+    // in AP ARP tables.
+    const managedVisibleIds = new Set(
+      typeFiltered.filter(n => n.managed !== false).map(n => n.id)
+    );
+    const visibleNodes = typeFiltered.filter(n => {
+      if (n.managed !== false) return true;
+      return graph.links.some(l => {
+        const src = l.source as string, tgt = l.target as string;
+        return (src === n.id && managedVisibleIds.has(tgt))
+            || (tgt === n.id && managedVisibleIds.has(src));
+      });
+    });
+    const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
+    const visibleLinks = graph.links.filter(
+      l => visibleNodeIds.has(l.source as string) && visibleNodeIds.has(l.target as string)
+    );
+
     // Compute stable grid positions, overlay any operator-dragged overrides
-    const gridPos = computeLayout(graph.nodes, graph.links, width, height);
-    const nodes: PlacedNode[] = graph.nodes.map(n => {
+    const gridPos = computeLayout(visibleNodes, visibleLinks, width, height);
+    const nodes: PlacedNode[] = visibleNodes.map(n => {
       const override = dragOverridesRef.current.get(n.id);
       const grid = gridPos.get(n.id) ?? { x: width / 2, y: height / 2 };
       return { ...n, x: override?.x ?? grid.x, y: override?.y ?? grid.y };
     });
 
     const nodeById = new Map(nodes.map(n => [n.id, n]));
-    const links: PlacedLink[] = graph.links
+    const links: PlacedLink[] = visibleLinks
       .map(l => {
         const source = nodeById.get(l.source as string);
         const target = nodeById.get(l.target as string);
@@ -140,7 +170,7 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
 
     // Recompute zoom-to-fit when canvas dimensions change (e.g. window resize);
     // reuse saved transform only when the same dimensions re-render (data refresh).
-    const dimKey = `${width}x${height}`;
+    const dimKey = `${width}x${height}:${hiddenTypesKey}`;
     if (transformRef.current && (transformRef.current as any).__dimKey !== dimKey) {
       transformRef.current = null;
     }
@@ -162,6 +192,8 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
     let hovered: PlacedNode | null = null;
     let dragged: PlacedNode | null = null;
     let dragMoved = false;
+    let dragStartX = 0, dragStartY = 0;
+    const DRAG_THRESHOLD = 25; // px² — 5px movement before a click becomes a drag
 
     function nodeAt(px: number, py: number): PlacedNode | null {
       const x = (px - transform.x) / transform.k;
@@ -256,6 +288,14 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
       const r = canvas.getBoundingClientRect();
       const px = e.clientX - r.left, py = e.clientY - r.top;
       if (dragged) {
+        const dx = px - dragStartX, dy = py - dragStartY;
+        if (!dragMoved && (dx * dx + dy * dy) < DRAG_THRESHOLD) {
+          // Below threshold — treat as a pending click, not a drag yet
+          hovered = dragged;
+          canvas.style.cursor = 'pointer';
+          draw();
+          return;
+        }
         dragged.x = (px - transform.x) / transform.k;
         dragged.y = (py - transform.y) / transform.k;
         dragMoved = true;
@@ -267,8 +307,9 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
 
     canvas.addEventListener('mousedown', e => {
       const r = canvas.getBoundingClientRect();
-      const n = nodeAt(e.clientX - r.left, e.clientY - r.top);
-      if (n) { dragged = n; dragMoved = false; }
+      const px = e.clientX - r.left, py = e.clientY - r.top;
+      const n = nodeAt(px, py);
+      if (n) { dragged = n; dragMoved = false; dragStartX = px; dragStartY = py; }
     });
 
     canvas.addEventListener('mouseup', () => {
@@ -286,7 +327,7 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
     });
 
     return () => { drawRef.current = null; };
-  }, [graph, width, height, onNodeClick]);
+  }, [graph, width, height, onNodeClick, hiddenTypesKey]);
 
   return <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: `${height}px`, background: '#1D1E24' }} />;
 };

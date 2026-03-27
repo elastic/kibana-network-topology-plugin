@@ -13,6 +13,7 @@ export const SiteOverview: React.FC<Props> = ({ onSiteClick, from, to, refreshKe
   const api = useApi();
   const [sites, setSites] = useState<SiteHealth[]>([]);
   const [totalDevices, setTotalDevices] = useState(0);
+  const [discoveredCount, setDiscoveredCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,7 +21,7 @@ export const SiteOverview: React.FC<Props> = ({ onSiteClick, from, to, refreshKe
     let cancelled = false;
     setLoading(true);
     api.fetchSites({ from, to })
-      .then((r) => { if (!cancelled) { setSites(r.sites); setTotalDevices(r.totalDevices); setLoading(false); } })
+      .then((r) => { if (!cancelled) { setSites(r.sites); setTotalDevices(r.totalDevices); setDiscoveredCount(r.discoveredCount); setLoading(false); } })
       .catch((e) => { if (!cancelled) { setError(e.message); setLoading(false); } });
     return () => { cancelled = true; };
   }, [api, from, to, refreshKey]);
@@ -32,6 +33,7 @@ export const SiteOverview: React.FC<Props> = ({ onSiteClick, from, to, refreshKe
     <>
       <EuiFlexGroup>
         <EuiFlexItem><EuiStat title={totalDevices} description="Total Devices" titleSize="l" /></EuiFlexItem>
+        <EuiFlexItem><EuiStat title={discoveredCount} description="Discovered (ARP)" titleSize="l" /></EuiFlexItem>
         <EuiFlexItem><EuiStat title={sites.length} description="Sites" titleSize="l" /></EuiFlexItem>
         <EuiFlexItem><EuiStat title={sites.filter(s => s.worstStatus === 'down').length} description="Sites with Issues" titleSize="l" titleColor="danger" /></EuiFlexItem>
       </EuiFlexGroup>

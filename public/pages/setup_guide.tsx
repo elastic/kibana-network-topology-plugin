@@ -10,58 +10,43 @@ import type { SetupHealthResponse } from '../../common';
 
 type CollectorTab = 'logstash' | 'elastic-agent' | 'telegraf' | 'direct';
 
-const LOGSTASH_CONF = `# Logstash SNMP collector — writes directly to the plugin schema.
-# Requires the logstash-input-snmp plugin: bin/logstash-plugin install logstash-input-snmp
+const LOGSTASH_CONF = `# Logstash SNMP collector — one pipeline per device role.
+# Requires: bin/logstash-plugin install logstash-input-snmp
+# Full reference config: docs/collectors/logstash.conf
 
-# ─── Interface metrics pipeline ───────────────────────────────────────────────
+# Duplicate this file per role (core, distribution, access, server).
+# Each pipeline walks ALL SNMP tables in a single poll per device.
+
 input {
   snmp {
-    hosts => [{ host => "udp:DEVICE_IP/161" community => "public" version => "2c" }]
-    walk  => ["1.3.6.1.2.1.2.2"]          # ifTable
-    get   => ["1.3.6.1.2.1.1.5.0",        # sysName
-              "1.3.6.1.2.1.1.1.0"]        # sysDescr
+    id       => "snmp_YOUR_ROLE"
+    hosts    => [
+      { host => "udp:DEVICE_IP/161" community => "public" version => "2c" }
+    ]
+    get      => ["1.3.6.1.2.1.1.5.0",    # sysName
+                 "1.3.6.1.2.1.1.1.0"]    # sysDescr
+    walk     => [
+      "1.3.6.1.2.1.2.2",                  # ifTable         → interface.*
+      "1.3.6.1.2.1.4.22",                 # ipNetToMedia    → arp.*
+      "1.3.6.1.2.1.17.4.3",               # dot1dTpFdbTable → mac_table.*
+      "1.3.6.1.2.1.4.20"                  # ipAddrTable     → ip_addr.*
+    ]
     interval => 60
-    tables => [{
-      name    => "ifTable"
-      columns => ["1.3.6.1.2.1.2.2.1.2",  # ifDescr  → interface.name
-                  "1.3.6.1.2.1.2.2.1.5",  # ifSpeed  → interface.speed
-                  "1.3.6.1.2.1.2.2.1.7",  # ifAdminStatus
-                  "1.3.6.1.2.1.2.2.1.8",  # ifOperStatus
-                  "1.3.6.1.2.1.2.2.1.10", # ifInOctets
-                  "1.3.6.1.2.1.2.2.1.16", # ifOutOctets
-                  "1.3.6.1.2.1.2.2.1.14", # ifInErrors
-                  "1.3.6.1.2.1.2.2.1.20"] # ifOutErrors
-    }]
     add_field => {
-      "[host][ip]"     => "DEVICE_IP"
-      "[network][site]" => "YOUR_SITE_NAME"
-      "[network][role]" => "access"         # core | distribution | access | server
+      "[network][site]" => "YOUR_SITE"
+      "[network][role]" => "YOUR_ROLE"     # core | distribution | access | server
+      "[host][type]"    => "YOUR_TYPE"     # router | switch | firewall | ap | server
     }
   }
 }
 
 filter {
-  mutate {
-    rename => {
-      "[SNMPv2-MIB::sysName][0]"   => "[host][name]"
-      "[SNMPv2-MIB::sysDescr][0]"  => "[observer][sys_descr]"
-      "[ifTable][ifDescr]"         => "[interface][name]"
-      "[ifTable][ifSpeed]"         => "[interface][speed]"
-      "[ifTable][ifInOctets]"      => "[interface][traffic][in][bytes]"
-      "[ifTable][ifOutOctets]"     => "[interface][traffic][out][bytes]"
-      "[ifTable][ifInErrors]"      => "[interface][errors][in]"
-      "[ifTable][ifOutErrors]"     => "[interface][errors][out]"
-    }
-    # Map integer status codes to strings
-    gsub => ["[ifTable][ifAdminStatus]", "^1$", "up",
-             "[ifTable][ifAdminStatus]", "^2$", "down"]
-    gsub => ["[ifTable][ifOperStatus]",  "^1$", "up",
-             "[ifTable][ifOperStatus]",  "^2$", "down",
-             "[ifTable][ifOperStatus]",  "^3$", "testing"]
-    rename => {
-      "[ifTable][ifAdminStatus]" => "[interface][status][admin]"
-      "[ifTable][ifOperStatus]"  => "[interface][status][oper]"
-    }
+  # A unified Ruby filter parses all four table types from the combined walk
+  # and emits one document per row (interface, ARP entry, MAC entry, IP addr).
+  # See docs/collectors/logstash.conf for the full filter implementation.
+  ruby {
+    code => "... see docs/collectors/logstash.conf ..."
+    tag_on_exception => "_ruby_exception"
   }
 }
 
@@ -70,19 +55,16 @@ output {
     hosts    => ["https://YOUR_ES_HOST:9200"]
     user     => "elastic"
     password => "YOUR_PASSWORD"
+    ssl_certificate_verification => false
     index    => "snmp-%{+YYYY.MM.dd}"
     pipeline => "snmp-device-enrichment"   # auto-enriches vendor, host.type
   }
 }
-
-# ─── ARP table pipeline (run separately or on same device list) ───────────────
-# Walk ipNetToMediaTable (1.3.6.1.2.1.4.22) and map:
-#   ipNetToMediaPhysAddress → arp.mac_addr
-#   ipNetToMediaNetAddress  → arp.ip_addr
 `;
 
-const TELEGRAF_TOML = `# Telegraf SNMP collector — writes to the plugin schema via the ES output plugin.
+const TELEGRAF_TOML = `# Telegraf SNMP collector — one config per device role.
 # Requires: Telegraf 1.20+, outputs.elasticsearch plugin
+# Full reference config: docs/collectors/telegraf.toml
 
 [[inputs.snmp]]
   agents = ["udp://DEVICE_IP:161"]
@@ -136,7 +118,11 @@ const TELEGRAF_TOML = `# Telegraf SNMP collector — writes to the plugin schema
       name = "errors_out"
       oid  = "IF-MIB::ifOutErrors"
 
-# Rename Telegraf fields to plugin schema before sending to ES
+  # ARP table (ipNetToMediaTable), MAC table (dot1dTpFdbTable), and
+  # IP address table (ipAddrTable) are also collected in the full config.
+  # See docs/collectors/telegraf.toml for complete table definitions,
+  # field renames, and the Starlark CIDR computation processor.
+
 [[processors.rename]]
   [[processors.rename.replace]]
     field = "host_name"
@@ -150,6 +136,12 @@ const TELEGRAF_TOML = `# Telegraf SNMP collector — writes to the plugin schema
   [[processors.rename.replace]]
     field = "speed"
     dest  = "interface.speed"
+  [[processors.rename.replace]]
+    field = "admin_status"
+    dest  = "interface.status.admin"
+  [[processors.rename.replace]]
+    field = "oper_status"
+    dest  = "interface.status.oper"
   [[processors.rename.replace]]
     field = "traffic_in_bytes"
     dest  = "interface.traffic.in.bytes"
@@ -168,7 +160,6 @@ const TELEGRAF_TOML = `# Telegraf SNMP collector — writes to the plugin schema
   username  = "elastic"
   password  = "YOUR_PASSWORD"
   index_name = "snmp-%Y.%m.%d"
-  # Apply the enrichment pipeline to auto-detect vendor/host.type
   pipeline  = "snmp-device-enrichment"
   [outputs.elasticsearch.headers]
     Content-Type = "application/json"
@@ -205,7 +196,13 @@ existing \`snmp-device-enrichment\` pipeline:
     { "rename": { "field": "snmp.ifInOctets", "target_field": "interface.traffic.in.bytes",  "ignore_missing": true } },
     { "rename": { "field": "snmp.ifOutOctets","target_field": "interface.traffic.out.bytes", "ignore_missing": true } },
     { "rename": { "field": "snmp.ifAdminStatus", "target_field": "interface.status.admin", "ignore_missing": true } },
-    { "rename": { "field": "snmp.ifOperStatus",  "target_field": "interface.status.oper",  "ignore_missing": true } }
+    { "rename": { "field": "snmp.ifOperStatus",  "target_field": "interface.status.oper",  "ignore_missing": true } },
+    { "rename": { "field": "snmp.ipNetToMediaPhysAddress", "target_field": "arp.mac_addr",   "ignore_missing": true } },
+    { "rename": { "field": "snmp.ipNetToMediaNetAddress",  "target_field": "arp.ip_addr",    "ignore_missing": true } },
+    { "rename": { "field": "snmp.ipNetToMediaIfIndex",     "target_field": "arp.interface_index", "ignore_missing": true } },
+    { "rename": { "field": "snmp.dot1dTpFdbAddress", "target_field": "mac_table.mac_addr",   "ignore_missing": true } },
+    { "rename": { "field": "snmp.dot1dTpFdbPort",    "target_field": "mac_table.port_index",  "ignore_missing": true } },
+    { "rename": { "field": "snmp.dot1dTpFdbStatus",  "target_field": "mac_table.status",      "ignore_missing": true } }
   ]
 }
 \`\`\`
@@ -273,8 +270,10 @@ const FIELD_ROWS = [
   { field: 'interface.errors.out',        type: 'long',    ecs: 'Custom',     description: 'Output errors (ifOutErrors)', example: '0' },
   { field: 'arp.ip_addr',                 type: 'ip',      ecs: 'Custom',     description: 'ARP neighbor IP (ipNetToMediaNetAddress)', example: '10.1.1.3' },
   { field: 'arp.mac_addr',                type: 'keyword', ecs: 'Custom',     description: 'ARP neighbor MAC (ipNetToMediaPhysAddress)', example: 'aa:bb:cc:dd:ee:02' },
+  { field: 'arp.interface_index',         type: 'integer', ecs: 'Custom',     description: 'Interface on which ARP entry was learned (ipNetToMediaIfIndex)', example: '1' },
   { field: 'mac_table.mac_addr',          type: 'keyword', ecs: 'Custom',     description: 'Bridge forwarding table MAC (dot1dTpFdbAddress)', example: 'aa:bb:cc:dd:ee:05' },
   { field: 'mac_table.port_index',        type: 'integer', ecs: 'Custom',     description: 'Bridge port index (dot1dTpFdbPort)', example: '2' },
+  { field: 'mac_table.status',            type: 'keyword', ecs: 'Custom',     description: 'Entry type (dot1dTpFdbStatus)', example: 'learned, static, mgmt' },
   { field: 'ip_addr.address',             type: 'ip',      ecs: 'Custom',     description: 'Interface IP address (ipAdEntAddr) — used for subnet/segment lookup', example: '192.168.10.1' },
   { field: 'ip_addr.netmask',             type: 'keyword', ecs: 'Custom',     description: 'Interface subnet mask (ipAdEntNetMask)', example: '255.255.255.0' },
   { field: 'ip_addr.network',             type: 'keyword', ecs: 'Custom',     description: 'Computed CIDR block from address + netmask — used for segment grouping', example: '192.168.10.0/24' },

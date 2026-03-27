@@ -42,6 +42,7 @@ export function registerSitesRoutes(router: IRouter, logger: Logger) {
                 },
               },
             },
+            discovered_ips: { cardinality: { field: 'arp.ip_addr' } },
           },
         });
 
@@ -73,10 +74,13 @@ export function registerSitesRoutes(router: IRouter, logger: Logger) {
           };
         });
 
+        const discoveredCount = (result.aggregations?.discovered_ips as any)?.value ?? 0;
+
         return response.ok({
           body: {
             sites,
             totalDevices: sites.reduce((sum: number, s: any) => sum + s.deviceCount, 0),
+            discoveredCount,
             timestamp: new Date().toISOString(),
           },
         });
