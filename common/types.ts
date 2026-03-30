@@ -55,7 +55,7 @@ export interface TopologyLink {
   targetPort?: string;
   status: 'up' | 'down' | 'degraded';
   trafficVolume?: number;
-  method: 'arp' | 'mac' | 'lldp' | 'cdp' | 'manual';
+  method: 'arp' | 'mac' | 'lldp' | 'cdp' | 'bgp' | 'ospf' | 'manual';
 }
 
 export interface TopologyGraph {
@@ -114,10 +114,33 @@ export interface DevicesResponse {
   pageSize: number;
 }
 
+export interface BGPPeerSession {
+  remoteIP: string;
+  remoteASN: number;
+  localASN: number;
+  state: string;
+  prefixesReceived: number;
+  prefixesSent: number;
+  uptimeSeconds: number;
+  inUpdates: number;
+  outUpdates: number;
+}
+
+export interface OSPFNeighbor {
+  neighborIP: string;
+  routerID: string;
+  state: string;
+  areaID: string;
+  priority: number;
+  retransCount: number;
+}
+
 export interface DeviceDetailResponse {
   device: NetworkDevice;
   interfaces: DeviceInterface[];
   neighbors: Array<{ ip: string; mac: string }>;
+  bgpPeers: BGPPeerSession[];
+  ospfNeighbors: OSPFNeighbor[];
   recentEvents: Array<{ timestamp: string; message: string; level: string }>;
 }
 
@@ -125,5 +148,5 @@ export interface SetupHealthResponse {
   indexTemplate: { installed: boolean };
   ingestPipeline: { installed: boolean };
   recentData: { hasData: boolean; deviceCount: number; siteCount: number };
-  fieldCoverage: { interfaces: boolean; arpTable: boolean; macTable: boolean; ipAddrTable: boolean };
+  fieldCoverage: { interfaces: boolean; arpTable: boolean; macTable: boolean; ipAddrTable: boolean; bgpPeers: boolean; ospfNeighbors: boolean };
 }

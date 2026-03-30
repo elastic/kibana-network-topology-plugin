@@ -158,9 +158,10 @@ export async function buildTopologyFromArpMac(
   const links: TopologyLink[] = [];
   const linkSet = new Set<string>();
 
-  function addLink(src: string, tgt: string, srcPort: string, tgtPort: string, method: 'arp' | 'mac') {
+  function addLink(src: string, tgt: string, srcPort: string, tgtPort: string, method: 'arp' | 'mac' | 'bgp' | 'ospf') {
     if (src === tgt) return;
-    const key = [src, tgt].sort().join('||');
+    // BGP/OSPF links coexist with ARP/MAC links (logical overlay vs physical adjacency)
+    const key = [src, tgt].sort().join('||') + (method === 'bgp' || method === 'ospf' ? `||${method}` : '');
     if (linkSet.has(key)) return;
     linkSet.add(key);
 
@@ -240,6 +241,96 @@ export async function buildTopologyFromArpMac(
               break;
             }
           }
+        }
+      }
+    }
+  }
+
+  // Step 5: BGP peer sessions — create links between BGP neighbors
+  const bgpResult = await esClient.search({
+    index, size: 0,
+    query: { bool: { filter: [...filters, { exists: { field: 'bgp_peer.remote_ip' } }] } },
+    aggs: {
+      by_device: {
+        terms: { field: 'host.name', size: 5000 },
+        aggs: {
+          peers: {
+            terms: { field: 'bgp_peer.remote_ip', size: 500 },
+            aggs: {
+              state: { terms: { field: 'bgp_peer.peer_state', size: 1 } },
+              remote_asn: { terms: { field: 'bgp_peer.remote_asn', size: 1 } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const bgpBuckets = (bgpResult.aggregations?.by_device as any)?.buckets || [];
+  for (const devBucket of bgpBuckets) {
+    const deviceName = devBucket.key;
+    for (const peerBucket of (devBucket.peers?.buckets || [])) {
+      const remoteIp = peerBucket.key as string;
+      const peerState = peerBucket.state?.buckets?.[0]?.key || 'Idle';
+      const remoteAsn = peerBucket.remote_asn?.buckets?.[0]?.key;
+      let neighbor = ipToDevice.get(remoteIp);
+      if (!neighbor) {
+        // External BGP peer — create an unmanaged node labeled with the ASN
+        const nodeId = `AS${remoteAsn || '?'}-${remoteIp}`;
+        if (!discoveredIds.has(nodeId)) {
+          discoveredIds.add(nodeId);
+          const label = remoteAsn ? `AS ${remoteAsn}` : remoteIp;
+          nodes.push({ id: nodeId, label, ip: remoteIp, type: 'unknown', status: 'unknown', managed: false });
+          deviceMap.set(nodeId, { ip: remoteIp, mac: '', type: 'unknown', status: 'unknown' });
+          ipToDevice.set(remoteIp, nodeId);
+        }
+        neighbor = ipToDevice.get(remoteIp);
+      }
+      if (neighbor && neighbor !== deviceName && deviceMap.has(neighbor)) {
+        // Override link status based on BGP peer state, not device status
+        const bgpKey = [deviceName, neighbor].sort().join('||') + '||bgp';
+        if (!linkSet.has(bgpKey)) {
+          linkSet.add(bgpKey);
+          const bgpStatus: 'up' | 'down' | 'degraded' = peerState === 'Established' ? 'up' : 'down';
+          links.push({ id: bgpKey, source: deviceName, target: neighbor, sourcePort: '', targetPort: '', status: bgpStatus, method: 'bgp' });
+        }
+      }
+    }
+  }
+
+  // Step 6: OSPF neighbor adjacencies — create links between OSPF neighbors
+  const ospfResult = await esClient.search({
+    index, size: 0,
+    query: { bool: { filter: [...filters, { exists: { field: 'ospf_neighbor.neighbor_ip' } }] } },
+    aggs: {
+      by_device: {
+        terms: { field: 'host.name', size: 5000 },
+        aggs: {
+          neighbors: {
+            terms: { field: 'ospf_neighbor.neighbor_ip', size: 500 },
+            aggs: {
+              state: { terms: { field: 'ospf_neighbor.state', size: 1 } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const ospfBuckets = (ospfResult.aggregations?.by_device as any)?.buckets || [];
+  for (const devBucket of ospfBuckets) {
+    const deviceName = devBucket.key;
+    for (const nbrBucket of (devBucket.neighbors?.buckets || [])) {
+      const neighborIp = nbrBucket.key as string;
+      const nbrState = nbrBucket.state?.buckets?.[0]?.key || 'Down';
+      const neighbor = ipToDevice.get(neighborIp);
+      if (neighbor && neighbor !== deviceName && deviceMap.has(neighbor)) {
+        const ospfKey = [deviceName, neighbor].sort().join('||') + '||ospf';
+        if (!linkSet.has(ospfKey)) {
+          linkSet.add(ospfKey);
+          const ospfStatus: 'up' | 'down' | 'degraded' =
+            (nbrState === 'Full' || nbrState === '2-Way') ? 'up' : 'down';
+          links.push({ id: ospfKey, source: deviceName, target: neighbor, sourcePort: '', targetPort: '', status: ospfStatus, method: 'ospf' });
         }
       }
     }

@@ -279,6 +279,21 @@ const FIELD_ROWS = [
   { field: 'ip_addr.network',             type: 'keyword', ecs: 'Custom',     description: 'Computed CIDR block from address + netmask — used for segment grouping', example: '192.168.10.0/24' },
   { field: 'ip_addr.prefix_length',       type: 'integer', ecs: 'Custom',     description: 'Prefix length derived from netmask', example: '24' },
   { field: 'ip_addr.if_index',            type: 'integer', ecs: 'Custom',     description: 'Interface index (ipAdEntIfIndex) linking this IP to an interface row', example: '3' },
+  { field: 'bgp_peer.remote_ip',          type: 'ip',      ecs: 'Custom',     description: 'BGP peer remote IP address (bgpPeerRemoteAddr)', example: '198.51.100.1' },
+  { field: 'bgp_peer.remote_asn',         type: 'long',    ecs: 'Custom',     description: 'BGP peer remote AS number (bgpPeerRemoteAs)', example: '3356' },
+  { field: 'bgp_peer.local_asn',          type: 'long',    ecs: 'Custom',     description: 'Local AS number (bgpLocalAs)', example: '65000' },
+  { field: 'bgp_peer.peer_state',         type: 'keyword', ecs: 'Custom',     description: 'BGP FSM state (bgpPeerState)', example: 'Established, Idle, Active' },
+  { field: 'bgp_peer.prefixes_received',  type: 'long',    ecs: 'Custom',     description: 'Prefixes received from peer (vendor-specific)', example: '920000' },
+  { field: 'bgp_peer.prefixes_sent',      type: 'long',    ecs: 'Custom',     description: 'Prefixes advertised to peer (vendor-specific)', example: '12' },
+  { field: 'bgp_peer.uptime_seconds',     type: 'long',    ecs: 'Custom',     description: 'Seconds since BGP session established (bgpPeerFsmEstablishedTime)', example: '2592000' },
+  { field: 'bgp_peer.in_updates',         type: 'long',    ecs: 'Custom',     description: 'BGP UPDATE messages received (bgpPeerInUpdates)', example: '45000' },
+  { field: 'bgp_peer.out_updates',        type: 'long',    ecs: 'Custom',     description: 'BGP UPDATE messages sent (bgpPeerOutUpdates)', example: '1200' },
+  { field: 'ospf_neighbor.neighbor_ip',   type: 'ip',      ecs: 'Custom',     description: 'OSPF neighbor IP address (ospfNbrIpAddr)', example: '10.1.1.2' },
+  { field: 'ospf_neighbor.router_id',     type: 'ip',      ecs: 'Custom',     description: 'OSPF neighbor router ID (ospfNbrRtrId)', example: '10.1.1.2' },
+  { field: 'ospf_neighbor.state',         type: 'keyword', ecs: 'Custom',     description: 'OSPF adjacency state (ospfNbrState)', example: 'Full, 2-Way, Down' },
+  { field: 'ospf_neighbor.area_id',       type: 'keyword', ecs: 'Custom',     description: 'OSPF area identifier', example: '0.0.0.0' },
+  { field: 'ospf_neighbor.priority',      type: 'integer', ecs: 'Custom',     description: 'OSPF neighbor priority (ospfNbrPriority)', example: '1' },
+  { field: 'ospf_neighbor.retrans_count', type: 'integer', ecs: 'Custom',     description: 'OSPF state change events (ospfNbrEvents)', example: '3' },
 ];
 
 const ECS_BADGE_COLOR: Record<string, string> = {

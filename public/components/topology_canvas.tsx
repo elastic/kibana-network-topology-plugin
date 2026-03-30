@@ -24,10 +24,12 @@ const MIN_H_SPACING = 100; // horizontal
 const MIN_V_SPACING = 120; // vertical (row-to-row)
 const MAX_ROW_WIDTH  = 12; // max nodes per row before wrapping within the same tier
 
-// Pyramid layout: device types are arranged in tiers top→bottom.
-// Each tier fills up to MAX_ROW_WIDTH nodes per row before wrapping within the tier.
+// Logical topology layout arranged top→bottom:
+//   Top:    External BGP peers (unmanaged nodes with BGP links — transit providers, upstream ASes)
+//   Middle: Managed device tiers (router → firewall → switch → server → ap → unknown)
+//   Bottom: ARP-discovered clients/endpoints (unmanaged nodes without BGP links)
+// Each tier fills up to MAX_ROW_WIDTH nodes per row before wrapping.
 // Within a tier, nodes are sorted by link-count desc then label asc for determinism.
-// Unmanaged (ARP-discovered) nodes always occupy the bottom tier.
 const TYPE_TIERS = ['router', 'firewall', 'switch', 'server', 'ap', 'unknown'];
 
 function computeLayout(
@@ -45,8 +47,14 @@ function computeLayout(
     degree.set(tgt, (degree.get(tgt) ?? 0) + 1);
   }
 
-  const unmanaged = nodes.filter(n => n.managed === false);
-  const managed   = nodes.filter(n => n.managed !== false);
+  // Separate unmanaged nodes into BGP external peers (top) vs ARP-discovered (bottom)
+  const bgpNodeIds = new Set<string>();
+  for (const l of links) {
+    if (l.method === 'bgp') { bgpNodeIds.add(l.source as string); bgpNodeIds.add(l.target as string); }
+  }
+  const unmanagedBgp = nodes.filter(n => n.managed === false && bgpNodeIds.has(n.id));
+  const unmanagedArp = nodes.filter(n => n.managed === false && !bgpNodeIds.has(n.id));
+  const managed      = nodes.filter(n => n.managed !== false);
 
   // Bucket managed nodes by type tier; unknown catches any unlisted types
   const byType = new Map<string, TopologyNode[]>(TYPE_TIERS.map(t => [t, []]));
@@ -61,17 +69,21 @@ function computeLayout(
     return d !== 0 ? d : a.label.localeCompare(b.label);
   };
   for (const group of byType.values()) group.sort(sortByDegree);
-  unmanaged.sort((a, b) => a.label.localeCompare(b.label));
+  unmanagedBgp.sort(sortByDegree);
+  unmanagedArp.sort((a, b) => a.label.localeCompare(b.label));
 
-  // Build rows: each tier fills up to MAX_ROW_WIDTH before wrapping
+  // Build rows: BGP external peers at top, managed tiers in the middle, ARP-discovered at bottom
   const rows: TopologyNode[][] = [];
+  // Top: external BGP peers (transit providers, upstream ASes)
+  for (let i = 0; i < unmanagedBgp.length; i += MAX_ROW_WIDTH) rows.push(unmanagedBgp.slice(i, i + MAX_ROW_WIDTH));
+  // Middle: managed device tiers
   for (const t of TYPE_TIERS) {
     const group = byType.get(t)!;
     if (group.length === 0) continue;
     for (let i = 0; i < group.length; i += MAX_ROW_WIDTH) rows.push(group.slice(i, i + MAX_ROW_WIDTH));
   }
-  // Unmanaged at the bottom
-  for (let i = 0; i < unmanaged.length; i += MAX_ROW_WIDTH) rows.push(unmanaged.slice(i, i + MAX_ROW_WIDTH));
+  // Bottom: ARP-discovered clients/endpoints
+  for (let i = 0; i < unmanagedArp.length; i += MAX_ROW_WIDTH) rows.push(unmanagedArp.slice(i, i + MAX_ROW_WIDTH));
 
   if (rows.length === 0) return new Map();
 
@@ -208,10 +220,24 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
       for (const link of links) {
         const { source: s, target: t } = link;
         ctx!.beginPath(); ctx!.moveTo(s.x, s.y); ctx!.lineTo(t.x, t.y);
-        ctx!.strokeStyle = STATUS_COLORS[link.status] || '#98A2B3';
-        ctx!.globalAlpha = link.status === 'down' ? 0.4 : 0.6;
-        ctx!.lineWidth = link.status === 'down' ? 1 : 1.5;
-        ctx!.setLineDash(link.status === 'down' ? [4, 4] : []);
+        if (link.method === 'bgp') {
+          // BGP links: dot-dash pattern, thicker, colored by peer state
+          ctx!.strokeStyle = link.status === 'up' ? '#0077CC' : '#BD271E';
+          ctx!.globalAlpha = link.status === 'down' ? 0.5 : 0.7;
+          ctx!.lineWidth = 2;
+          ctx!.setLineDash(link.status === 'down' ? [4, 4] : [8, 3, 2, 3]);
+        } else if (link.method === 'ospf') {
+          // OSPF links: long-dash pattern, teal-green for Full, red otherwise
+          ctx!.strokeStyle = link.status === 'up' ? '#54B399' : '#BD271E';
+          ctx!.globalAlpha = link.status === 'down' ? 0.5 : 0.7;
+          ctx!.lineWidth = 2;
+          ctx!.setLineDash(link.status === 'down' ? [4, 4] : [10, 4]);
+        } else {
+          ctx!.strokeStyle = STATUS_COLORS[link.status] || '#98A2B3';
+          ctx!.globalAlpha = link.status === 'down' ? 0.4 : 0.6;
+          ctx!.lineWidth = link.status === 'down' ? 1 : 1.5;
+          ctx!.setLineDash(link.status === 'down' ? [4, 4] : []);
+        }
         ctx!.stroke(); ctx!.globalAlpha = 1; ctx!.setLineDash([]);
       }
 
@@ -253,7 +279,11 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
       if (hovered) {
         const tx = hovered.x + R + 10, ty = hovered.y - 30;
         const lines = [hovered.label, `IP: ${hovered.ip}`, `Type: ${hovered.type}`, `Status: ${hovered.status}`];
-        if (hovered.managed === false) lines.push('Unmanaged (ARP-discovered)');
+        if (hovered.managed === false) {
+          const hasBgp = links.some(l => l.method === 'bgp' && (l.source === hovered || l.target === hovered));
+          const hasOspf = links.some(l => l.method === 'ospf' && (l.source === hovered || l.target === hovered));
+          lines.push(hasBgp ? 'Unmanaged (BGP-discovered)' : hasOspf ? 'Unmanaged (OSPF-discovered)' : 'Unmanaged (ARP-discovered)');
+        }
         ctx!.fillStyle = 'rgba(30,30,30,0.92)'; ctx!.strokeStyle = 'rgba(255,255,255,0.15)'; ctx!.lineWidth = 1;
         roundRect(ctx!, tx, ty, 160, lines.length * 16 + 16, 6); ctx!.fill(); ctx!.stroke();
         ctx!.fillStyle = '#FFF'; ctx!.textAlign = 'left'; ctx!.textBaseline = 'top';

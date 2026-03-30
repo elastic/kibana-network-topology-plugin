@@ -178,6 +178,29 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
               terms: { field: 'arp.ip_addr', size: 500 },
               aggs: { mac: { terms: { field: 'arp.mac_addr', size: 1 } } },
             },
+            bgp_sessions: {
+              terms: { field: 'bgp_peer.remote_ip', size: 500 },
+              aggs: {
+                state:       { terms: { field: 'bgp_peer.peer_state', size: 1 } },
+                remote_asn:  { terms: { field: 'bgp_peer.remote_asn', size: 1 } },
+                local_asn:   { terms: { field: 'bgp_peer.local_asn', size: 1 } },
+                prefixes_rx: { max: { field: 'bgp_peer.prefixes_received' } },
+                prefixes_tx: { max: { field: 'bgp_peer.prefixes_sent' } },
+                uptime:      { max: { field: 'bgp_peer.uptime_seconds' } },
+                in_updates:  { max: { field: 'bgp_peer.in_updates' } },
+                out_updates: { max: { field: 'bgp_peer.out_updates' } },
+              },
+            },
+            ospf_neighbors: {
+              terms: { field: 'ospf_neighbor.neighbor_ip', size: 500 },
+              aggs: {
+                state:     { terms: { field: 'ospf_neighbor.state', size: 1 } },
+                router_id: { terms: { field: 'ospf_neighbor.router_id', size: 1 } },
+                area_id:   { terms: { field: 'ospf_neighbor.area_id', size: 1 } },
+                priority:  { max: { field: 'ospf_neighbor.priority' } },
+                retrans:   { max: { field: 'ospf_neighbor.retrans_count' } },
+              },
+            },
             last_seen: { max: { field: '@timestamp' } },
           },
         });
@@ -185,6 +208,8 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
         const hit = (result.aggregations?.device_info as any)?.hits?.hits?.[0]?._source || {};
         const ifBuckets = (result.aggregations?.interfaces as any)?.buckets || [];
         const arpBuckets = (result.aggregations?.arp_neighbors as any)?.buckets || [];
+        const bgpBuckets = (result.aggregations?.bgp_sessions as any)?.buckets || [];
+        const ospfBuckets = (result.aggregations?.ospf_neighbors as any)?.buckets || [];
         const lastSeen = (result.aggregations?.last_seen as any)?.value_as_string || '';
 
         const interfaces = ifBuckets.map((b: any) => ({
@@ -217,6 +242,25 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
             interfaces,
             neighbors: arpBuckets.map((b: any) => ({
               ip: b.key, mac: b.mac?.buckets?.[0]?.key || '',
+            })),
+            ospfNeighbors: ospfBuckets.map((b: any) => ({
+              neighborIP: b.key,
+              routerID: b.router_id?.buckets?.[0]?.key || '',
+              state: b.state?.buckets?.[0]?.key || 'unknown',
+              areaID: b.area_id?.buckets?.[0]?.key || '',
+              priority: b.priority?.value || 0,
+              retransCount: b.retrans?.value || 0,
+            })),
+            bgpPeers: bgpBuckets.map((b: any) => ({
+              remoteIP: b.key,
+              remoteASN: b.remote_asn?.buckets?.[0]?.key || 0,
+              localASN: b.local_asn?.buckets?.[0]?.key || 0,
+              state: b.state?.buckets?.[0]?.key || 'unknown',
+              prefixesReceived: b.prefixes_rx?.value || 0,
+              prefixesSent: b.prefixes_tx?.value || 0,
+              uptimeSeconds: b.uptime?.value || 0,
+              inUpdates: b.in_updates?.value || 0,
+              outUpdates: b.out_updates?.value || 0,
             })),
             recentEvents: [],
           },

@@ -109,6 +109,30 @@ $CURL -X PUT "${ES_URL}/_index_template/snmp-network-o11y" -H 'Content-Type: app
             "port_index": { "type": "integer" },
             "status":     { "type": "keyword" }
           }
+        },
+        "ospf_neighbor": {
+          "properties": {
+            "neighbor_ip":   { "type": "ip" },
+            "router_id":     { "type": "ip" },
+            "state":         { "type": "keyword" },
+            "area_id":       { "type": "keyword" },
+            "priority":      { "type": "integer" },
+            "dead_timer":    { "type": "integer" },
+            "retrans_count": { "type": "integer" }
+          }
+        },
+        "bgp_peer": {
+          "properties": {
+            "remote_ip":         { "type": "ip" },
+            "remote_asn":        { "type": "long" },
+            "local_asn":         { "type": "long" },
+            "peer_state":        { "type": "keyword" },
+            "prefixes_received": { "type": "long" },
+            "prefixes_sent":     { "type": "long" },
+            "uptime_seconds":    { "type": "long" },
+            "in_updates":        { "type": "long" },
+            "out_updates":       { "type": "long" }
+          }
         }
       }
     }

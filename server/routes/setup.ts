@@ -41,6 +41,8 @@ export function registerSetupRoutes(router: IRouter, logger: Logger) {
               has_arp:          { filter: { exists: { field: 'arp.mac_addr' } } },
               has_mac_table:    { filter: { exists: { field: 'mac_table.mac_addr' } } },
               has_ip_addr_table: { filter: { exists: { field: 'ip_addr.network' } } },
+              has_bgp:           { filter: { exists: { field: 'bgp_peer.remote_ip' } } },
+              has_ospf:          { filter: { exists: { field: 'ospf_neighbor.neighbor_ip' } } },
             },
           }),
         ]);
@@ -67,13 +69,19 @@ export function registerSetupRoutes(router: IRouter, logger: Logger) {
         const hasIpAddrTable = coverageResult.status === 'fulfilled'
           ? ((coverageResult.value.aggregations?.has_ip_addr_table as any)?.doc_count ?? 0) > 0
           : false;
+        const hasBgpPeers = coverageResult.status === 'fulfilled'
+          ? ((coverageResult.value.aggregations?.has_bgp as any)?.doc_count ?? 0) > 0
+          : false;
+        const hasOspfNeighbors = coverageResult.status === 'fulfilled'
+          ? ((coverageResult.value.aggregations?.has_ospf as any)?.doc_count ?? 0) > 0
+          : false;
 
         return response.ok({
           body: {
             indexTemplate: { installed: indexTemplate },
             ingestPipeline: { installed: ingestPipeline },
             recentData: { hasData: deviceCount > 0, deviceCount, siteCount },
-            fieldCoverage: { interfaces: hasInterfaces, arpTable: hasArp, macTable: hasMacTable, ipAddrTable: hasIpAddrTable },
+            fieldCoverage: { interfaces: hasInterfaces, arpTable: hasArp, macTable: hasMacTable, ipAddrTable: hasIpAddrTable, bgpPeers: hasBgpPeers, ospfNeighbors: hasOspfNeighbors },
           },
         });
       } catch (err) {

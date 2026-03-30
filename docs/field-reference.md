@@ -125,9 +125,52 @@ Used to determine which network segments (CIDRs) each device participates in.
 
 ---
 
+## `bgp_peer.*` — BGP Peer Sessions (Custom)
+
+Populated from the BGP4-MIB `bgpPeerTable` (RFC 4273, OID `1.3.6.1.2.1.15.3`).
+Used to display BGP peering sessions and create logical overlay links on the topology map.
+
+| Field | Type | ECS Status | SNMP MIB OID | Description | Example |
+|-------|------|-----------|--------------|-------------|---------|
+| `bgp_peer.remote_ip` | ip | Custom | `bgpPeerRemoteAddr` (.7) | BGP peer remote IP address | `198.51.100.1` |
+| `bgp_peer.remote_asn` | long | Custom | `bgpPeerRemoteAs` (.9) | Remote autonomous system number | `3356` |
+| `bgp_peer.local_asn` | long | Custom | `bgpLocalAs` (1.3.6.1.2.1.15.2) | Local autonomous system number | `65000` |
+| `bgp_peer.peer_state` | keyword | Custom | `bgpPeerState` (.2) | BGP FSM state | `Established`, `Idle`, `Active` |
+| `bgp_peer.prefixes_received` | long | Custom | *vendor-specific* | Prefixes received from this peer (not in standard BGP4-MIB) | `920000` |
+| `bgp_peer.prefixes_sent` | long | Custom | *vendor-specific* | Prefixes advertised to this peer | `12` |
+| `bgp_peer.uptime_seconds` | long | Custom | `bgpPeerFsmEstablishedTime` (.16) | Seconds since the session was established | `2592000` |
+| `bgp_peer.in_updates` | long | Custom | `bgpPeerInUpdates` (.10) | BGP UPDATE messages received | `45000` |
+| `bgp_peer.out_updates` | long | Custom | `bgpPeerOutUpdates` (.11) | BGP UPDATE messages sent | `1200` |
+
+> **Note:** Prefix counts (`prefixes_received`, `prefixes_sent`) are NOT part of the standard BGP4-MIB.
+> They are available in vendor-specific MIBs (e.g., Cisco CISCO-BGP4-MIB, Juniper jnxBgpM2PrefixCounters)
+> or BGP4-MIB-V2 (draft). The Logstash filter sets these to 0 when unavailable.
+
+---
+
+## `ospf_neighbor.*` — OSPF Neighbor Adjacencies (Custom)
+
+Populated from the OSPF-MIB `ospfNbrTable` (RFC 4750, OID `1.3.6.1.2.1.14.10`).
+Used to display OSPF adjacency state and create interior routing links on the topology map.
+
+| Field | Type | ECS Status | SNMP MIB OID | Description | Example |
+|-------|------|-----------|--------------|-------------|---------|
+| `ospf_neighbor.neighbor_ip` | ip | Custom | `ospfNbrIpAddr` (.1) | OSPF neighbor IP address | `10.1.1.2` |
+| `ospf_neighbor.router_id` | ip | Custom | `ospfNbrRtrId` (.3) | Neighbor's OSPF router ID | `10.1.1.2` |
+| `ospf_neighbor.state` | keyword | Custom | `ospfNbrState` (.6) | OSPF FSM adjacency state | `Full`, `2-Way`, `Down` |
+| `ospf_neighbor.area_id` | keyword | Custom | *from OID index* | OSPF area identifier | `0.0.0.0` (backbone) |
+| `ospf_neighbor.priority` | integer | Custom | `ospfNbrPriority` (.5) | DR election priority | `1` |
+| `ospf_neighbor.dead_timer` | integer | Custom | *configured* | Dead interval in seconds | `40` |
+| `ospf_neighbor.retrans_count` | integer | Custom | `ospfNbrEvents` (.7) | Number of state change events | `3` |
+
+> **Note:** OSPF state values: 1=Down, 2=Attempt, 3=Init, 4=2-Way, 5=ExStart, 6=Exchange, 7=Loading, 8=Full.
+> "Full" means fully adjacent (exchanged LSDBs). "2-Way" is normal for DROther routers on broadcast segments.
+
+---
+
 ## Document Types
 
-A single SNMP poll cycle produces **four document types** per device,
+A single SNMP poll cycle produces **six document types** per device,
 all indexed into `snmp-YYYY.MM.dd`:
 
 | Document type | Distinguishing field | Purpose |
@@ -136,8 +179,10 @@ all indexed into `snmp-YYYY.MM.dd`:
 | ARP entry | `arp.mac_addr` present | Layer-3 neighbor discovery |
 | MAC table entry | `mac_table.mac_addr` present | Layer-2 forwarding topology |
 | IP address entry | `ip_addr.address` present | Interface IPs and subnet membership for segment views |
+| BGP peer session | `bgp_peer.remote_ip` present | BGP peering state, AS numbers, prefix counts, uptime |
+| OSPF neighbor | `ospf_neighbor.neighbor_ip` present | OSPF adjacency state, router ID, area, priority |
 
-All four share the same `host.*`, `observer.*`, and `network.*` fields to identify
+All six share the same `host.*`, `observer.*`, and `network.*` fields to identify
 which device the data belongs to.
 
 ---

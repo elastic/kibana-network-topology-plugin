@@ -34,6 +34,27 @@ export const STATUS_COLORS: Record<string, string> = {
   unknown:  '#98A2B3',
 };
 
+export const BGP_STATE_COLORS: Record<string, string> = {
+  Established: '#00BFB3',
+  Active:      '#F5A623',
+  Connect:     '#F5A623',
+  OpenSent:    '#F5A623',
+  OpenConfirm: '#F5A623',
+  Idle:        '#BD271E',
+  Down:        '#BD271E',
+};
+
+export const OSPF_STATE_COLORS: Record<string, string> = {
+  Full:        '#00BFB3',
+  '2-Way':     '#54B399',
+  Loading:     '#F5A623',
+  Exchange:    '#F5A623',
+  ExStart:     '#F5A623',
+  Init:        '#F5A623',
+  Attempt:     '#BD271E',
+  Down:        '#BD271E',
+};
+
 // A device is considered down if no SNMP data has arrived within this window.
 // Default: 5 minutes — roughly 5× the standard Logstash interface polling interval (60s).
 export const DEVICE_DOWN_THRESHOLD_MS = 5 * 60 * 1000;
