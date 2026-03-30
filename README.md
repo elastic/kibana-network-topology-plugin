@@ -35,18 +35,18 @@ nvm use
 yarn kbn bootstrap
 ```
 
-The plugin lives at `plugins/kibana-network-o11y/` inside the Kibana repo. If you are working from a separate checkout, copy or symlink it there.
+The plugin lives at `plugins/kibana-network-topology-plugin/` inside the Kibana repo. If you are working from a separate checkout, copy or symlink it there.
 
 ### 2. Start Elasticsearch + Kibana (Docker)
 
 ```bash
-docker compose -f plugins/kibana-network-o11y/docker-compose.dev.yml up -d
+docker compose -f plugins/kibana-network-topology-plugin/docker-compose.dev.yml up -d
 ```
 
 ### 3. Set up index templates and load sample data
 
 ```bash
-cd plugins/kibana-network-o11y
+cd plugins/kibana-network-topology-plugin
 
 chmod +x scripts/setup_elasticsearch.sh
 ./scripts/setup_elasticsearch.sh
@@ -74,7 +74,7 @@ Default login: `elastic` / `changeme`
 ### Build the plugin zip
 
 ```bash
-cd plugins/kibana-network-o11y
+cd plugins/kibana-network-topology-plugin
 node ../../scripts/plugin_helpers build --kibana-version 8.19.12
 ```
 
@@ -125,7 +125,7 @@ Field mappings are documented in [`docs/field-reference.md`](docs/field-referenc
 │ Elasticsearch 8.19                                   │
 │  Data stream: logs-snmp.topology-default             │
 │  Ingest pipeline: snmp-device-enrichment             │
-│  Index template: snmp-network-o11y                   │
+│  Index template: logs-snmp.topology@template         │
 └──────────────────────────────────────────────────────┘
 ```
 
