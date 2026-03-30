@@ -283,7 +283,7 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
           const boxX = node.x - boxW / 2;
           const boxY = node.y + 24;
 
-          ctx!.fillStyle = 'rgba(29, 30, 36, 0.55)';
+          ctx!.fillStyle = 'rgba(29, 30, 36, 0.75)';
           roundRect(ctx!, boxX, boxY, boxW, boxH, 4);
           ctx!.fill();
 
