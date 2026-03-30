@@ -1,4 +1,4 @@
-# Telegraf SNMP collector for kibana-network-o11y
+# Telegraf SNMP collector for logs-snmp.topology schema
 # ──────────────────────────────────────────────────────────────────────────────
 # Requirements: Telegraf 1.20+
 # Replace: DEVICE_IP, YOUR_SITE, YOUR_ROLE, YOUR_ES_HOST, YOUR_PASSWORD
@@ -231,7 +231,8 @@ def apply(metric):
   username  = "elastic"
   password  = "YOUR_PASSWORD"
   insecure_skip_verify = true
-  index_name = "snmp-%Y.%m.%d"
+  index_name = "logs-snmp.topology-default"
   pipeline   = "snmp-device-enrichment"
+  op_type    = "create"
   [outputs.elasticsearch.headers]
     Content-Type = "application/json"

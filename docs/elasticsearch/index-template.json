@@ -1,16 +1,16 @@
 {
-  "name": "snmp-network-o11y",
+  "name": "logs-snmp.topology@template",
   "_meta": {
-    "description": "Index template for kibana-network-o11y SNMP data. Apply with: PUT _index_template/snmp-network-o11y"
+    "description": "Index template for logs-snmp.topology data stream. Apply with: PUT _index_template/logs-snmp.topology@template"
   },
-  "index_patterns": ["snmp-*", "logstash-snmp-*"],
+  "index_patterns": ["logs-snmp.*"],
+  "data_stream": {},
   "priority": 200,
   "template": {
     "settings": {
-      "number_of_shards": 1,
-      "number_of_replicas": 1,
-      "index.lifecycle.name": "snmp-ilm-policy",
-      "index.lifecycle.rollover_alias": "snmp"
+      "index.number_of_shards": 1,
+      "index.auto_expand_replicas": "0-1",
+      "index.lifecycle.name": "snmp-ilm-policy"
     },
     "mappings": {
       "dynamic": true,

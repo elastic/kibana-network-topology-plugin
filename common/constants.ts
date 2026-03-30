@@ -1,7 +1,8 @@
 export const PLUGIN_ID = 'networkTopology';
 export const PLUGIN_NAME = 'Network Topology';
 
-export const DEFAULT_SNMP_INDEX = 'snmp-*,logstash-snmp-*';
+export const SNMP_DATA_STREAM = 'logs-snmp.topology-default';
+export const DEFAULT_SNMP_INDEX = 'logs-snmp.*';
 export const DEFAULT_SYSLOG_INDEX = 'logs-*,filebeat-*';
 export const DEFAULT_NETFLOW_INDEX = 'netflow-*';
 export const DEFAULT_METRICS_INDEX = 'metricbeat-*';

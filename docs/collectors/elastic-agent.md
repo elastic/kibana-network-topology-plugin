@@ -28,7 +28,7 @@ pipeline using the `pipeline` processor.
 ```json
 PUT _ingest/pipeline/snmp-elastic-agent-remap
 {
-  "description": "Remap Elastic Agent SNMP fields to kibana-network-o11y schema",
+  "description": "Remap Elastic Agent SNMP fields to logs-snmp.topology schema",
   "processors": [
     { "rename": { "field": "snmp.sysName",            "target_field": "host.name",                      "ignore_missing": true } },
     { "rename": { "field": "snmp.sysDescr",           "target_field": "observer.sys_descr",             "ignore_missing": true } },
@@ -54,18 +54,17 @@ PUT _ingest/pipeline/snmp-elastic-agent-remap
 }
 ```
 
-### Option B — Re-index into `snmp-*`
+### Option B — Re-index into `logs-snmp.*`
 
 If you prefer to keep the Elastic Agent data stream untouched, run a periodic
 re-index (or use an Enrich policy) to copy documents from `logs-snmp.*` into
-`snmp-*` with the field names remapped.
+the `logs-snmp.topology-default` data stream with the field names remapped.
 
-## Index pattern
+## Data stream
 
-After remapping, the plugin's default index pattern (`snmp-*,logstash-snmp-*`)
-will not cover `logs-snmp.*` unless you either:
-- Change the plugin's index setting to include `logs-snmp-*`, or
-- Re-index data into `snmp-*` as described above
+The plugin's default query pattern is `logs-snmp.*`. After remapping, the
+re-indexed data will be automatically included as long as it targets a data
+stream matching that pattern (e.g. `logs-snmp.topology-default`).
 
 ## Notes
 

@@ -171,7 +171,7 @@ Used to display OSPF adjacency state and create interior routing links on the to
 ## Document Types
 
 A single SNMP poll cycle produces **six document types** per device,
-all indexed into `snmp-YYYY.MM.dd`:
+all indexed into the `logs-snmp.topology-default` data stream:
 
 | Document type | Distinguishing field | Purpose |
 |---------------|----------------------|---------|

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 process.env.NODE_TLS_REJECT_UNAUTHORIZED='0';
 const ES=process.argv[2]||'https://localhost:9200',U=process.argv[3]||'elastic',P=process.argv[4]||'09ed4afed47fd7533d9eef6438cefd81cdde512b306304d55dec0e35e77f9f8d';
-const IDX='snmp-topology',AUTH=Buffer.from(`${U}:${P}`).toString('base64');
+const IDX='logs-snmp.topology-default',AUTH=Buffer.from(`${U}:${P}`).toString('base64');
 const SITES=[{name:'HQ-DC1',building:'Main',subnet:'10.1',devices:[
 {name:'hq-core-rtr-01',type:'router',role:'core',vendor:'Cisco',descr:'Cisco IOS XR Software, ASR 9000 Series Router'},
 {name:'hq-core-rtr-02',type:'router',role:'core',vendor:'Cisco',descr:'Cisco IOS XR Software, ASR 9000 Series Router'},
@@ -137,7 +137,7 @@ function makeOspfDoc(ts, localDev, remoteIp, routerId, state, areaId, priority) 
   };
 }
 
-async function bulk(docs){const body=docs.flatMap(d=>[{index:{_index:IDX}},d]);const r=await fetch(`${ES}/_bulk`,{method:'POST',headers:{'Content-Type':'application/x-ndjson',Authorization:`Basic ${AUTH}`},body:body.map(l=>JSON.stringify(l)).join('\n')+'\n'});const j=await r.json();if(j.errors){const e=j.items.find(i=>i.index?.error);if(e)console.error('Err:',JSON.stringify(e.index.error))}return j;}
+async function bulk(docs){const body=docs.flatMap(d=>[{create:{_index:IDX}},d]);const r=await fetch(`${ES}/_bulk`,{method:'POST',headers:{'Content-Type':'application/x-ndjson',Authorization:`Basic ${AUTH}`},body:body.map(l=>JSON.stringify(l)).join('\n')+'\n'});const j=await r.json();if(j.errors){const e=j.items.find(i=>i.create?.error);if(e)console.error('Err:',JSON.stringify(e.create.error))}return j;}
 
 async function main(){
 console.log(`=== Generating sample data: ${devs.length} devices → ${ES}/${IDX} ===`);

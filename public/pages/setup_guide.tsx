@@ -1,53 +1,232 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { compressToEncodedURIComponent } from 'lz-string';
 import {
   EuiTitle, EuiSpacer, EuiPanel, EuiFlexGroup, EuiFlexItem,
-  EuiHealth, EuiText, EuiButtonEmpty, EuiLoadingSpinner, EuiCallOut,
+  EuiHealth, EuiText, EuiButton, EuiButtonEmpty, EuiLoadingSpinner, EuiCallOut,
   EuiAccordion, EuiCodeBlock, EuiTabs, EuiTab, EuiBasicTable,
   EuiBadge, EuiHorizontalRule,
 } from '@elastic/eui';
 import { useApi } from '../hooks/use_api';
 import type { SetupHealthResponse } from '../../common';
 
-type CollectorTab = 'logstash' | 'elastic-agent' | 'telegraf' | 'direct';
+type CollectorTab = 'logstash' | 'direct';
 
-const LOGSTASH_CONF = `# Logstash SNMP collector — one pipeline per device role.
-# Requires: bin/logstash-plugin install logstash-input-snmp
-# Full reference config: docs/collectors/logstash.conf
-
-# Duplicate this file per role (core, distribution, access, server).
-# Each pipeline walks ALL SNMP tables in a single poll per device.
+const LOGSTASH_CONF = `# Logstash SNMP collector for logs-snmp.topology data stream
+# ──────────────────────────────────────────────────────────────────────────────
+# Requirements:
+#   bin/logstash-plugin install logstash-input-snmp
+#   Logstash 8.x+
+#
+# Architecture: ONE PIPELINE PER DEVICE ROLE
+#   Duplicate this file for each role in your network (e.g. snmp-core.conf,
+#   snmp-distribution.conf, snmp-access.conf). Each pipeline walks ALL SNMP
+#   tables in a single poll per device — no key collisions because OID paths
+#   are namespaced by MIB entry name (ifEntry, ipNetToMediaEntry, etc.).
+#
+# Device type classification:
+#   host.type is set explicitly in add_field (not inferred from sysDescr).
+#   Use the translate filter block (commented below) for mixed-type pipelines.
+#
+# Replace: DEVICE_*_IP, YOUR_SITE, YOUR_ROLE, YOUR_TYPE, YOUR_ES_HOST, YOUR_PASSWORD
+# ──────────────────────────────────────────────────────────────────────────────
 
 input {
   snmp {
     id       => "snmp_YOUR_ROLE"
     hosts    => [
-      { host => "udp:DEVICE_IP/161" community => "public" version => "2c" }
+      { host => "udp:DEVICE_1_IP/161" community => "public" version => "2c" },
+      { host => "udp:DEVICE_2_IP/161" community => "public" version => "2c" }
     ]
-    get      => ["1.3.6.1.2.1.1.5.0",    # sysName
-                 "1.3.6.1.2.1.1.1.0"]    # sysDescr
+    get      => [
+      "1.3.6.1.2.1.1.5.0",   # sysName
+      "1.3.6.1.2.1.1.1.0",   # sysDescr
+      "1.3.6.1.2.1.15.2.0"   # BGP4-MIB::bgpLocalAs
+    ]
     walk     => [
-      "1.3.6.1.2.1.2.2",                  # ifTable         → interface.*
-      "1.3.6.1.2.1.4.22",                 # ipNetToMedia    → arp.*
-      "1.3.6.1.2.1.17.4.3",               # dot1dTpFdbTable → mac_table.*
-      "1.3.6.1.2.1.4.20"                  # ipAddrTable     → ip_addr.*
+      "1.3.6.1.2.1.2.2",     # IF-MIB::ifTable
+      "1.3.6.1.2.1.4.22",    # IP-MIB::ipNetToMediaTable (ARP)
+      "1.3.6.1.2.1.17.4.3",  # BRIDGE-MIB::dot1dTpFdbTable (MAC)
+      "1.3.6.1.2.1.4.20",    # IP-MIB::ipAddrTable
+      "1.3.6.1.2.1.15.3",    # BGP4-MIB::bgpPeerTable
+      "1.3.6.1.2.1.14.10"    # OSPF-MIB::ospfNbrTable
     ]
     interval => 60
     add_field => {
-      "[network][site]" => "YOUR_SITE"
-      "[network][role]" => "YOUR_ROLE"     # core | distribution | access | server
-      "[host][type]"    => "YOUR_TYPE"     # router | switch | firewall | ap | server
+      "[network][site]"  => "YOUR_SITE"
+      "[network][role]"  => "YOUR_ROLE"
+      "[host][type]"     => "YOUR_TYPE"
     }
   }
 }
 
 filter {
-  # A unified Ruby filter parses all four table types from the combined walk
-  # and emits one document per row (interface, ARP entry, MAC entry, IP addr).
-  # See docs/collectors/logstash.conf for the full filter implementation.
   ruby {
-    code => "... see docs/collectors/logstash.conf ..."
+    code => '
+      host_name = nil; sys_descr = nil
+      host_ip   = event.get("[@metadata][host_address]") ||
+                  event.get("[@metadata][input][snmp][host][address]") || ""
+      site      = event.get("[network][site]") || ""
+      role      = event.get("[network][role]") || ""
+      host_type = event.get("[host][type]") || ""
+      local_asn = nil
+      timestamp = event.get("@timestamp")
+
+      base = lambda do
+        e = LogStash::Event.new
+        e.set("@timestamp",            timestamp)
+        e.set("[host][name]",          host_name.to_s)
+        e.set("[host][ip]",            host_ip)
+        e.set("[host][type]",          host_type) unless host_type.empty?
+        e.set("[observer][sys_descr]", sys_descr.to_s)
+        e.set("[network][site]",       site)
+        e.set("[network][role]",       role)
+        e
+      end
+
+      if_cols   = %w[ifDescr ifSpeed ifAdminStatus ifOperStatus
+                     ifInOctets ifInErrors ifOutOctets ifOutErrors].to_set
+      admin_map = { "1"=>"up", "2"=>"down", "3"=>"testing" }
+      oper_map  = { "1"=>"up", "2"=>"down", "3"=>"testing", "4"=>"unknown", "5"=>"dormant" }
+      arp_cols  = %w[ipNetToMediaIfIndex ipNetToMediaPhysAddress ipNetToMediaNetAddress].to_set
+      mac_cols  = %w[dot1dTpFdbAddress dot1dTpFdbPort dot1dTpFdbStatus].to_set
+      status_map = { "3"=>"learned", "4"=>"static", "5"=>"mgmt" }
+      bgp_cols  = %w[bgpPeerState bgpPeerRemoteAddr bgpPeerRemoteAs
+                     bgpPeerInUpdates bgpPeerOutUpdates bgpPeerFsmEstablishedTime].to_set
+      bgp_state_map = { "1"=>"Idle","2"=>"Connect","3"=>"Active",
+                        "4"=>"OpenSent","5"=>"OpenConfirm","6"=>"Established" }
+      ospf_cols = %w[ospfNbrIpAddr ospfNbrRtrId ospfNbrState ospfNbrPriority ospfNbrEvents].to_set
+      ospf_state_map = { "1"=>"Down","2"=>"Attempt","3"=>"Init","4"=>"2-Way",
+                         "5"=>"ExStart","6"=>"Exchange","7"=>"Loading","8"=>"Full" }
+      ip_cols   = %w[ipAdEntAddr ipAdEntNetMask ipAdEntIfIndex].to_set
+
+      prefix_len = lambda { |mask| mask.split(".").map { |o| o.to_i.to_s(2).count("1") }.sum }
+      to_cidr = lambda do |ip, mask|
+        net = ip.split(".").map(&:to_i).zip(mask.split(".").map(&:to_i)).map { |i,m| i & m }
+        "#{net.join(".")}/#{prefix_len.call(mask)}"
+      end
+
+      interfaces = {}; arp_entries = {}; mac_entries = {}
+      ip_entries = {}; bgp_entries = {}; ospf_entries = {}
+
+      event.to_hash.each do |key, val|
+        if key =~ /sysName\\.0$/i;    host_name = val.to_s; next; end
+        if key =~ /sysDescr\\.0$/i;   sys_descr = val.to_s; next; end
+        if key =~ /bgpLocalAs\\.0$/i; local_asn = val.to_i; next; end
+
+        if (m = key.match(/\\.ifEntry\\.(\\w+)\\.(\\d+(?:\\.\\d+)*)$/))
+          col, idx = m[1], m[2]; next unless if_cols.include?(col)
+          (interfaces[idx] ||= {})[col] = val; next
+        end
+        if (m = key.match(/\\.ipNetToMediaEntry\\.(\\w+)\\.(.+)$/))
+          col, idx = m[1], m[2]; next unless arp_cols.include?(col)
+          (arp_entries[idx] ||= {})[col] = val; next
+        end
+        if (m = key.match(/\\.dot1dTpFdbEntry\\.(\\w+)\\.(.+)$/))
+          col, idx = m[1], m[2]; next unless mac_cols.include?(col)
+          (mac_entries[idx] ||= {})[col] = val; next
+        end
+        if (m = key.match(/\\.ipAddrEntry\\.(\\w+)\\.(\\d+\\.\\d+\\.\\d+\\.\\d+)$/))
+          col, ip_idx = m[1], m[2]; next unless ip_cols.include?(col)
+          (ip_entries[ip_idx] ||= {})[col] = val.to_s; next
+        end
+        if (m = key.match(/\\.bgpPeerEntry\\.(\\w+)\\.(\\d+\\.\\d+\\.\\d+\\.\\d+)$/))
+          col, peer_ip = m[1], m[2]; next unless bgp_cols.include?(col)
+          (bgp_entries[peer_ip] ||= {})[col] = val; next
+        end
+        if (m = key.match(/\\.ospfNbrEntry\\.(\\w+)\\.(\\d+\\.\\d+\\.\\d+\\.\\d+)\\.\\d+$/))
+          col, nbr_ip = m[1], m[2]; next unless ospf_cols.include?(col)
+          (ospf_entries[nbr_ip] ||= {})[col] = val; next
+        end
+      end
+
+      interfaces.each do |_idx, d|
+        e = base.call
+        e.set("[interface][name]",               d["ifDescr"].to_s)
+        e.set("[interface][speed]",              d["ifSpeed"].to_i)
+        e.set("[interface][traffic][in][bytes]",  d["ifInOctets"].to_i)
+        e.set("[interface][traffic][out][bytes]", d["ifOutOctets"].to_i)
+        e.set("[interface][errors][in]",          d["ifInErrors"].to_i)
+        e.set("[interface][errors][out]",         d["ifOutErrors"].to_i)
+        e.set("[interface][status][admin]", admin_map[d["ifAdminStatus"].to_s] || d["ifAdminStatus"].to_s)
+        e.set("[interface][status][oper]",  oper_map[d["ifOperStatus"].to_s]   || d["ifOperStatus"].to_s)
+        new_event_block.call(e)
+      end
+
+      arp_entries.each do |_idx, d|
+        next unless d["ipNetToMediaPhysAddress"] && d["ipNetToMediaNetAddress"]
+        e = base.call
+        e.set("[arp][mac_addr]",       d["ipNetToMediaPhysAddress"].to_s)
+        e.set("[arp][ip_addr]",        d["ipNetToMediaNetAddress"].to_s)
+        e.set("[arp][interface_index]", d["ipNetToMediaIfIndex"].to_i)
+        new_event_block.call(e)
+      end
+
+      mac_entries.each do |_idx, d|
+        sl = status_map[d["dot1dTpFdbStatus"].to_s]; next unless sl
+        e = base.call
+        e.set("[mac_table][mac_addr]",   d["dot1dTpFdbAddress"].to_s)
+        e.set("[mac_table][port_index]", d["dot1dTpFdbPort"].to_i)
+        e.set("[mac_table][status]",     sl)
+        new_event_block.call(e)
+      end
+
+      ip_entries.each do |ip_idx, d|
+        addr = d["ipAdEntAddr"] || ip_idx; mask = d["ipAdEntNetMask"] || ""
+        next if addr.empty? || mask.empty?
+        first = addr.split(".").first.to_i
+        next if first == 0 || first == 127 || first >= 224
+        next if addr.start_with?("169.254.")
+        e = base.call
+        e.set("[ip_addr][address]",       addr)
+        e.set("[ip_addr][netmask]",       mask)
+        e.set("[ip_addr][network]",       to_cidr.call(addr, mask))
+        e.set("[ip_addr][prefix_length]", prefix_len.call(mask))
+        e.set("[ip_addr][if_index]",      d["ipAdEntIfIndex"].to_i)
+        new_event_block.call(e)
+      end
+
+      bgp_entries.each do |peer_ip, d|
+        e = base.call
+        e.set("[bgp_peer][remote_ip]",         peer_ip)
+        e.set("[bgp_peer][remote_asn]",        d["bgpPeerRemoteAs"].to_i)
+        e.set("[bgp_peer][local_asn]",         local_asn.to_i) if local_asn
+        e.set("[bgp_peer][peer_state]",        bgp_state_map[d["bgpPeerState"].to_s] || d["bgpPeerState"].to_s)
+        e.set("[bgp_peer][uptime_seconds]",    d["bgpPeerFsmEstablishedTime"].to_i)
+        e.set("[bgp_peer][in_updates]",        d["bgpPeerInUpdates"].to_i)
+        e.set("[bgp_peer][out_updates]",       d["bgpPeerOutUpdates"].to_i)
+        e.set("[bgp_peer][prefixes_received]", 0)
+        e.set("[bgp_peer][prefixes_sent]",     0)
+        new_event_block.call(e)
+      end
+
+      ospf_entries.each do |nbr_ip, d|
+        e = base.call
+        e.set("[ospf_neighbor][neighbor_ip]",   nbr_ip)
+        e.set("[ospf_neighbor][router_id]",     d["ospfNbrRtrId"].to_s)
+        e.set("[ospf_neighbor][state]",         ospf_state_map[d["ospfNbrState"].to_s] || d["ospfNbrState"].to_s)
+        e.set("[ospf_neighbor][priority]",      d["ospfNbrPriority"].to_i)
+        e.set("[ospf_neighbor][retrans_count]", d["ospfNbrEvents"].to_i)
+        new_event_block.call(e)
+      end
+
+      event.cancel
+    '
     tag_on_exception => "_ruby_exception"
   }
+
+  if ![interface][name] and ![arp][mac_addr] and ![mac_table][mac_addr] and ![ip_addr][address] and ![bgp_peer][remote_ip] and ![ospf_neighbor][neighbor_ip] {
+    drop {}
+  }
+
+  # Optional: per-device host.type overrides (uncomment for mixed-type pipelines)
+  # translate {
+  #   source           => "[host][ip]"
+  #   target           => "[host][type]"
+  #   override         => true
+  #   fallback         => ""
+  #   dictionary_path  => "/etc/logstash/device-types.yml"
+  #   refresh_interval => 300
+  # }
 }
 
 output {
@@ -56,160 +235,32 @@ output {
     user     => "elastic"
     password => "YOUR_PASSWORD"
     ssl_certificate_verification => false
-    index    => "snmp-%{+YYYY.MM.dd}"
-    pipeline => "snmp-device-enrichment"   # auto-enriches vendor, host.type
+    data_stream           => true
+    data_stream_type      => "logs"
+    data_stream_dataset   => "snmp.topology"
+    data_stream_namespace => "default"
   }
 }
+
+
+# ── pipelines.yml example ─────────────────────────────────────────────────────
+# - pipeline.id: snmp-core
+#   path.config: "/etc/logstash/conf.d/snmp-core.conf"
+#   pipeline.workers: 1
+#
+# - pipeline.id: snmp-distribution
+#   path.config: "/etc/logstash/conf.d/snmp-distribution.conf"
+#   pipeline.workers: 1
+#
+# - pipeline.id: snmp-access
+#   path.config: "/etc/logstash/conf.d/snmp-access.conf"
+#   pipeline.workers: 1
 `;
 
-const TELEGRAF_TOML = `# Telegraf SNMP collector — one config per device role.
-# Requires: Telegraf 1.20+, outputs.elasticsearch plugin
-# Full reference config: docs/collectors/telegraf.toml
 
-[[inputs.snmp]]
-  agents = ["udp://DEVICE_IP:161"]
-  version = 2
-  community = "public"
-  interval = "60s"
-  name = "snmp_interface"
-
-  [[inputs.snmp.field]]
-    name = "host_name"
-    oid  = "SNMPv2-MIB::sysName.0"
-
-  [[inputs.snmp.field]]
-    name = "sys_descr"
-    oid  = "SNMPv2-MIB::sysDescr.0"
-
-  [[inputs.snmp.table]]
-    name = "interface"
-    inherit_tags = ["host_name", "sys_descr"]
-
-    [[inputs.snmp.table.field]]
-      name = "name"
-      oid  = "IF-MIB::ifDescr"
-      is_tag = true
-
-    [[inputs.snmp.table.field]]
-      name = "speed"
-      oid  = "IF-MIB::ifSpeed"
-
-    [[inputs.snmp.table.field]]
-      name = "admin_status"
-      oid  = "IF-MIB::ifAdminStatus"
-
-    [[inputs.snmp.table.field]]
-      name = "oper_status"
-      oid  = "IF-MIB::ifOperStatus"
-
-    [[inputs.snmp.table.field]]
-      name = "traffic_in_bytes"
-      oid  = "IF-MIB::ifInOctets"
-
-    [[inputs.snmp.table.field]]
-      name = "traffic_out_bytes"
-      oid  = "IF-MIB::ifOutOctets"
-
-    [[inputs.snmp.table.field]]
-      name = "errors_in"
-      oid  = "IF-MIB::ifInErrors"
-
-    [[inputs.snmp.table.field]]
-      name = "errors_out"
-      oid  = "IF-MIB::ifOutErrors"
-
-  # ARP table (ipNetToMediaTable), MAC table (dot1dTpFdbTable), and
-  # IP address table (ipAddrTable) are also collected in the full config.
-  # See docs/collectors/telegraf.toml for complete table definitions,
-  # field renames, and the Starlark CIDR computation processor.
-
-[[processors.rename]]
-  [[processors.rename.replace]]
-    field = "host_name"
-    dest  = "host.name"
-  [[processors.rename.replace]]
-    field = "sys_descr"
-    dest  = "observer.sys_descr"
-  [[processors.rename.replace]]
-    field = "interface_name"
-    dest  = "interface.name"
-  [[processors.rename.replace]]
-    field = "speed"
-    dest  = "interface.speed"
-  [[processors.rename.replace]]
-    field = "admin_status"
-    dest  = "interface.status.admin"
-  [[processors.rename.replace]]
-    field = "oper_status"
-    dest  = "interface.status.oper"
-  [[processors.rename.replace]]
-    field = "traffic_in_bytes"
-    dest  = "interface.traffic.in.bytes"
-  [[processors.rename.replace]]
-    field = "traffic_out_bytes"
-    dest  = "interface.traffic.out.bytes"
-  [[processors.rename.replace]]
-    field = "errors_in"
-    dest  = "interface.errors.in"
-  [[processors.rename.replace]]
-    field = "errors_out"
-    dest  = "interface.errors.out"
-
-[[outputs.elasticsearch]]
-  urls      = ["https://YOUR_ES_HOST:9200"]
-  username  = "elastic"
-  password  = "YOUR_PASSWORD"
-  index_name = "snmp-%Y.%m.%d"
-  pipeline  = "snmp-device-enrichment"
-  [outputs.elasticsearch.headers]
-    Content-Type = "application/json"
-`;
-
-const ELASTIC_AGENT_MD = `# Elastic Agent — SNMP Integration
-
-The official **Elastic SNMP integration** (in technical preview as of 8.x) collects
-interface metrics via Elastic Agent Fleet policies.
-
-## Setup
-
-1. In Kibana → **Fleet** → **Agent Policies** → Add integration → search **SNMP**
-2. Configure the target device IP, community string, and OID list
-3. The integration writes to \`logs-snmp.*\` data streams
-
-## Field remapping
-
-Elastic Agent's SNMP integration uses different field paths than this plugin's schema.
-Add the following **ingest pipeline processor** to remap fields before they reach
-the plugin's indices.
-
-Create a pipeline named \`snmp-elastic-agent-remap\` and set it as the
-\`default_pipeline\` on the \`logs-snmp.*\` index template, or chain it into the
-existing \`snmp-device-enrichment\` pipeline:
-
-\`\`\`json
-{
-  "processors": [
-    { "rename": { "field": "snmp.sysName",    "target_field": "host.name",          "ignore_missing": true } },
-    { "rename": { "field": "snmp.sysDescr",   "target_field": "observer.sys_descr", "ignore_missing": true } },
-    { "rename": { "field": "snmp.ifDescr",    "target_field": "interface.name",     "ignore_missing": true } },
-    { "rename": { "field": "snmp.ifSpeed",    "target_field": "interface.speed",    "ignore_missing": true } },
-    { "rename": { "field": "snmp.ifInOctets", "target_field": "interface.traffic.in.bytes",  "ignore_missing": true } },
-    { "rename": { "field": "snmp.ifOutOctets","target_field": "interface.traffic.out.bytes", "ignore_missing": true } },
-    { "rename": { "field": "snmp.ifAdminStatus", "target_field": "interface.status.admin", "ignore_missing": true } },
-    { "rename": { "field": "snmp.ifOperStatus",  "target_field": "interface.status.oper",  "ignore_missing": true } },
-    { "rename": { "field": "snmp.ipNetToMediaPhysAddress", "target_field": "arp.mac_addr",   "ignore_missing": true } },
-    { "rename": { "field": "snmp.ipNetToMediaNetAddress",  "target_field": "arp.ip_addr",    "ignore_missing": true } },
-    { "rename": { "field": "snmp.ipNetToMediaIfIndex",     "target_field": "arp.interface_index", "ignore_missing": true } },
-    { "rename": { "field": "snmp.dot1dTpFdbAddress", "target_field": "mac_table.mac_addr",   "ignore_missing": true } },
-    { "rename": { "field": "snmp.dot1dTpFdbPort",    "target_field": "mac_table.port_index",  "ignore_missing": true } },
-    { "rename": { "field": "snmp.dot1dTpFdbStatus",  "target_field": "mac_table.status",      "ignore_missing": true } }
-  ]
-}
-\`\`\`
-`;
 
 const DIRECT_CONF = `# Direct Elasticsearch indexing (Python / custom script)
-# POST documents to the snmp-* index that match the plugin schema exactly.
+# POST documents to the logs-snmp.topology-default data stream.
 # Set ?pipeline=snmp-device-enrichment to auto-enrich vendor and host.type.
 
 import requests, datetime
@@ -241,12 +292,100 @@ doc = {
 }
 
 requests.post(
-    "https://YOUR_ES_HOST:9200/snmp-today/_doc?pipeline=snmp-device-enrichment",
+    "https://YOUR_ES_HOST:9200/logs-snmp.topology-default/_doc?pipeline=snmp-device-enrichment",
     json=doc,
     auth=("elastic", "YOUR_PASSWORD"),
     verify=False
 )
 `;
+
+// ── DevTools deep-link helpers ──────────────────────────────────────────────
+// Kibana Console supports load_from=data:text/plain,<url-encoded content>
+// which pre-populates the editor. User just needs to click ▶ to run.
+
+function devToolsUrl(content: string): string {
+  // Kibana Console reads load_from, strips the data:text/plain, prefix, then calls
+  // decompressFromEncodedURIComponent — so the payload must be lz-string compressed.
+  const compressed = compressToEncodedURIComponent(content);
+  return `/app/dev_tools#/console?load_from=${encodeURIComponent(`data:text/plain,${compressed}`)}`;
+}
+
+const PIPELINE_BODY = {
+  description: 'Enrich SNMP device data — auto-detects device type and vendor from sysDescr',
+  processors: [
+    { set: { field: 'host.type',    value: 'unknown',    if: 'ctx.host?.type == null' } },
+    { set: { field: 'network.site', value: 'Ungrouped',  if: 'ctx.network?.site == null' } },
+    {
+      script: {
+        description: 'Infer host.type from sysDescr when not set by collector',
+        if: 'ctx.host?.type == "unknown" && ctx.observer?.sys_descr != null',
+        source: 'def d=ctx.observer.sys_descr.toLowerCase(); if(d.contains("router")||d.contains("ios xr")||d.contains("junos")){ctx.host.type="router"} else if(d.contains("switch")||d.contains("catalyst")||d.contains("nexus")||d.contains("eos")){ctx.host.type="switch"} else if(d.contains("firewall")||d.contains("asa")||d.contains("fortigate")||d.contains("palo alto")){ctx.host.type="firewall"} else if(d.contains("access point")||d.contains("aironet")||d.contains("aruba ap")){ctx.host.type="ap"} else if(d.contains("linux")||d.contains("windows")||d.contains("vmware")){ctx.host.type="server"}',
+      },
+    },
+    {
+      script: {
+        description: 'Detect vendor from sysDescr',
+        if: 'ctx.observer?.vendor == null && ctx.observer?.sys_descr != null',
+        source: 'def d=ctx.observer.sys_descr.toLowerCase(); if(d.contains("cisco")){ctx.observer.vendor="Cisco"} else if(d.contains("juniper")){ctx.observer.vendor="Juniper"} else if(d.contains("arista")){ctx.observer.vendor="Arista"} else if(d.contains("fortinet")){ctx.observer.vendor="Fortinet"} else if(d.contains("palo alto")){ctx.observer.vendor="Palo Alto"} else if(d.contains("aruba")||d.contains("hpe")){ctx.observer.vendor="HPE/Aruba"} else{ctx.observer.vendor="Unknown"}',
+      },
+    },
+  ],
+};
+
+const TEMPLATE_BODY = {
+  index_patterns: ['logs-snmp.*'],
+  data_stream: {},
+  priority: 200,
+  template: {
+    settings: {
+      'index.number_of_shards': 1,
+      'index.auto_expand_replicas': '0-1',
+      'index.default_pipeline': 'snmp-device-enrichment',
+    },
+    mappings: {
+      dynamic: true,
+      properties: {
+        '@timestamp': { type: 'date' },
+        host: { properties: { name: { type: 'keyword' }, ip: { type: 'ip' }, mac: { type: 'keyword' }, type: { type: 'keyword' } } },
+        observer: {
+          properties: {
+            vendor: { type: 'keyword' }, type: { type: 'keyword' },
+            sys_descr: { type: 'text', fields: { keyword: { type: 'keyword' } } },
+            os: { properties: { full: { type: 'keyword' } } },
+          },
+        },
+        network: { properties: { site: { type: 'keyword' }, building: { type: 'keyword' }, role: { type: 'keyword' } } },
+        interface: {
+          properties: {
+            name: { type: 'keyword' }, speed: { type: 'long' },
+            status: { properties: { admin: { type: 'keyword' }, oper: { type: 'keyword' } } },
+            traffic: { properties: { in: { properties: { bytes: { type: 'long' } } }, out: { properties: { bytes: { type: 'long' } } } } },
+            errors: { properties: { in: { type: 'long' }, out: { type: 'long' } } },
+          },
+        },
+        ip_addr: { properties: { address: { type: 'ip' }, netmask: { type: 'keyword' }, network: { type: 'keyword' }, prefix_length: { type: 'integer' }, if_index: { type: 'integer' } } },
+        arp: { properties: { ip_addr: { type: 'ip' }, mac_addr: { type: 'keyword' }, interface_index: { type: 'integer' } } },
+        mac_table: { properties: { mac_addr: { type: 'keyword' }, port_index: { type: 'integer' }, status: { type: 'keyword' } } },
+        bgp_peer: {
+          properties: {
+            remote_ip: { type: 'ip' }, remote_asn: { type: 'long' }, local_asn: { type: 'long' },
+            peer_state: { type: 'keyword' }, prefixes_received: { type: 'long' }, prefixes_sent: { type: 'long' },
+            uptime_seconds: { type: 'long' }, in_updates: { type: 'long' }, out_updates: { type: 'long' },
+          },
+        },
+        ospf_neighbor: {
+          properties: {
+            neighbor_ip: { type: 'ip' }, router_id: { type: 'ip' }, state: { type: 'keyword' },
+            area_id: { type: 'keyword' }, priority: { type: 'integer' }, dead_timer: { type: 'integer' }, retrans_count: { type: 'integer' },
+          },
+        },
+      },
+    },
+  },
+};
+
+const ES_PIPELINE_DEVTOOLS = `PUT _ingest/pipeline/snmp-device-enrichment\n${JSON.stringify(PIPELINE_BODY, null, 2)}`;
+const ES_TEMPLATE_DEVTOOLS = `PUT _index_template/logs-snmp.topology@template\n${JSON.stringify(TEMPLATE_BODY, null, 2)}`;
 
 const FIELD_ROWS = [
   { field: '@timestamp',                  type: 'date',    ecs: 'Core ECS',   description: 'Poll timestamp', example: '2024-01-01T12:00:00.000Z' },
@@ -324,10 +463,8 @@ export const SetupGuide: React.FC = () => {
   useEffect(() => { fetchHealth(); }, [fetchHealth]);
 
   const collectorConfigs: Record<CollectorTab, { label: string; lang: string; content: string }> = {
-    logstash:       { label: 'Logstash',       lang: 'ruby',   content: LOGSTASH_CONF },
-    'elastic-agent':{ label: 'Elastic Agent',  lang: 'markdown', content: ELASTIC_AGENT_MD },
-    telegraf:       { label: 'Telegraf',        lang: 'toml',   content: TELEGRAF_TOML },
-    direct:         { label: 'Direct / Custom', lang: 'python', content: DIRECT_CONF },
+    logstash: { label: 'Logstash',       lang: 'ruby',   content: LOGSTASH_CONF },
+    direct:   { label: 'Direct / Custom', lang: 'python', content: DIRECT_CONF },
   };
 
   return (
@@ -365,15 +502,15 @@ export const SetupGuide: React.FC = () => {
         {health && (
           <EuiFlexGroup direction="column" gutterSize="s">
             <EuiFlexItem>
-              <EuiHealth color={health.indexTemplate.installed ? 'success' : 'danger'}>
-                <strong>Index template</strong> (snmp-data) —{' '}
-                {health.indexTemplate.installed ? 'Installed' : 'Not found — run scripts/setup.sh to install'}
+              <EuiHealth color={health.ingestPipeline.installed ? 'success' : 'danger'}>
+                <strong>Ingest pipeline</strong> (snmp-device-enrichment) —{' '}
+                {health.ingestPipeline.installed ? 'Installed' : 'Not found — use the Open in DevTools button in Step 1a below'}
               </EuiHealth>
             </EuiFlexItem>
             <EuiFlexItem>
-              <EuiHealth color={health.ingestPipeline.installed ? 'success' : 'danger'}>
-                <strong>Ingest pipeline</strong> (snmp-device-enrichment) —{' '}
-                {health.ingestPipeline.installed ? 'Installed' : 'Not found — run scripts/setup.sh to install'}
+              <EuiHealth color={health.indexTemplate.installed ? 'success' : 'danger'}>
+                <strong>Index template</strong> (logs-snmp.topology@template) —{' '}
+                {health.indexTemplate.installed ? 'Installed' : 'Not found — use the Open in DevTools button in Step 1b below'}
               </EuiHealth>
             </EuiFlexItem>
             <EuiFlexItem>
@@ -417,29 +554,62 @@ export const SetupGuide: React.FC = () => {
         <EuiSpacer size="m" />
         <EuiText size="s">
           <p>
-            The <strong>index template</strong> (<code>snmp-network-o11y</code>) applies field mappings to every{' '}
-            <code>snmp-*</code> index. Critical mappings include <code>host.ip</code>, <code>ip_addr.address</code>,
-            and <code>arp.ip_addr</code> as <code>ip</code> type — this enables native CIDR term queries for segment
-            filtering. <code>ip_addr.network</code> is mapped as <code>keyword</code> so it can be aggregated
-            directly. The <strong>ingest pipeline</strong> auto-classifies device type and vendor from the raw{' '}
-            <code>observer.sys_descr</code> SNMP field.
-          </p>
-          <p>
-            Apply the index template before indexing data (it only affects new indices). The template definition
-            is at <code>docs/elasticsearch/index-template.json</code>:
+            Two Elasticsearch resources must be installed before data is indexed. Click{' '}
+            <strong>Open in DevTools</strong> for each command, then press the run button (▶) in the console to apply.
+            Install the pipeline first — the template references it as the default ingest pipeline.
           </p>
         </EuiText>
-        <EuiSpacer size="s" />
-        <EuiCodeBlock language="bash" isCopyable paddingSize="m">
-          {`# Apply index template\ncurl -X PUT "https://YOUR_ES_HOST:9200/_index_template/snmp-network-o11y" \\\n  -H "Content-Type: application/json" \\\n  -u elastic:YOUR_PASSWORD \\\n  -d @docs/elasticsearch/index-template.json\n\n# Apply ingest pipeline (if using the enrichment pipeline)\nbash scripts/setup.sh https://YOUR_ES_HOST:9200 elastic YOUR_PASSWORD`}
-        </EuiCodeBlock>
-        <EuiSpacer size="s" />
+
+        <EuiSpacer size="l" />
+
+        {/* 1a — Pipeline */}
+        <EuiFlexGroup alignItems="center" gutterSize="s" responsive={false}>
+          <EuiFlexItem>
+            <EuiTitle size="xs"><h4>1a — Ingest Pipeline: <code>snmp-device-enrichment</code></h4></EuiTitle>
+          </EuiFlexItem>
+          <EuiFlexItem grow={false}>
+            <EuiButton size="s" iconType="wrench" href={devToolsUrl(ES_PIPELINE_DEVTOOLS)} target="_blank">
+              Open in DevTools
+            </EuiButton>
+          </EuiFlexItem>
+        </EuiFlexGroup>
+        <EuiSpacer size="xs" />
         <EuiText size="xs" color="subdued">
           <p>
-            The template must be applied before data is indexed. If you already have data in <code>snmp-*</code> indices,
-            reindex into a new index (e.g. <code>snmp-reindex</code>) with the template applied first.
+            Classifies device type and detects vendor from <code>observer.sys_descr</code>. The index template sets
+            this as the <code>default_pipeline</code>, so it runs automatically on every indexed document.
           </p>
         </EuiText>
+        <EuiSpacer size="s" />
+        <EuiCodeBlock language="json" isCopyable overflowHeight={220} paddingSize="m">
+          {ES_PIPELINE_DEVTOOLS}
+        </EuiCodeBlock>
+
+        <EuiSpacer size="xl" />
+
+        {/* 1b — Template */}
+        <EuiFlexGroup alignItems="center" gutterSize="s" responsive={false}>
+          <EuiFlexItem>
+            <EuiTitle size="xs"><h4>1b — Index Template: <code>logs-snmp.topology@template</code></h4></EuiTitle>
+          </EuiFlexItem>
+          <EuiFlexItem grow={false}>
+            <EuiButton size="s" iconType="wrench" href={devToolsUrl(ES_TEMPLATE_DEVTOOLS)} target="_blank">
+              Open in DevTools
+            </EuiButton>
+          </EuiFlexItem>
+        </EuiFlexGroup>
+        <EuiSpacer size="xs" />
+        <EuiText size="xs" color="subdued">
+          <p>
+            Applies correct field types to the <code>logs-snmp.*</code> data stream — notably <code>ip</code> type for CIDR
+            queries and <code>keyword</code> for aggregations. Apply this <em>before</em> indexing any data; the
+            data stream will auto-create on first document write.
+          </p>
+        </EuiText>
+        <EuiSpacer size="s" />
+        <EuiCodeBlock language="json" isCopyable overflowHeight={300} paddingSize="m">
+          {ES_TEMPLATE_DEVTOOLS}
+        </EuiCodeBlock>
       </EuiAccordion>
 
       <EuiHorizontalRule margin="l" />

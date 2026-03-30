@@ -217,25 +217,28 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
       ctx!.save(); ctx!.clearRect(0, 0, width, height);
       ctx!.translate(transform.x, transform.y); ctx!.scale(transform.k, transform.k);
 
+      // Pulse phase: 0→1 sinusoidal oscillation (~2s cycle) for unhealthy elements.
+      // Provides a motion cue so status is perceivable without relying on color alone.
+      const pulse = (Math.sin(performance.now() / 1000 * 3) + 1) / 2;
+
       for (const link of links) {
         const { source: s, target: t } = link;
+        const bad = link.status !== 'up';
         ctx!.beginPath(); ctx!.moveTo(s.x, s.y); ctx!.lineTo(t.x, t.y);
         if (link.method === 'bgp') {
-          // BGP links: dot-dash pattern, thicker, colored by peer state
           ctx!.strokeStyle = link.status === 'up' ? '#0077CC' : '#BD271E';
-          ctx!.globalAlpha = link.status === 'down' ? 0.5 : 0.7;
-          ctx!.lineWidth = 2;
+          ctx!.globalAlpha = bad ? 0.4 + pulse * 0.5 : 0.7;
+          ctx!.lineWidth = bad ? 3 + pulse * 2 : 3;
           ctx!.setLineDash(link.status === 'down' ? [4, 4] : [8, 3, 2, 3]);
         } else if (link.method === 'ospf') {
-          // OSPF links: long-dash pattern, teal-green for Full, red otherwise
           ctx!.strokeStyle = link.status === 'up' ? '#54B399' : '#BD271E';
-          ctx!.globalAlpha = link.status === 'down' ? 0.5 : 0.7;
-          ctx!.lineWidth = 2;
+          ctx!.globalAlpha = bad ? 0.4 + pulse * 0.5 : 0.7;
+          ctx!.lineWidth = bad ? 3 + pulse * 2 : 3;
           ctx!.setLineDash(link.status === 'down' ? [4, 4] : [10, 4]);
         } else {
           ctx!.strokeStyle = STATUS_COLORS[link.status] || '#98A2B3';
-          ctx!.globalAlpha = link.status === 'down' ? 0.4 : 0.6;
-          ctx!.lineWidth = link.status === 'down' ? 1 : 1.5;
+          ctx!.globalAlpha = bad ? 0.3 + pulse * 0.4 : 0.6;
+          ctx!.lineWidth = bad ? 2 + pulse * 1.5 : 2.5;
           ctx!.setLineDash(link.status === 'down' ? [4, 4] : []);
         }
         ctx!.stroke(); ctx!.globalAlpha = 1; ctx!.setLineDash([]);
@@ -245,6 +248,7 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
         const cfg = DEVICE_TYPE_CONFIG[node.type] || DEVICE_TYPE_CONFIG.unknown;
         const sel = node.id === selectedNodeRef.current, hov = node === hovered;
         const unmanaged = node.managed === false;
+        const nodeBad = node.status === 'down' || node.status === 'degraded';
 
         ctx!.beginPath(); ctx!.arc(node.x, node.y, R, 0, 2 * Math.PI);
         ctx!.fillStyle = unmanaged ? '#4A4B52' : cfg.color;
@@ -252,7 +256,9 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
         ctx!.fill();
         if (unmanaged) ctx!.setLineDash([4, 3]);
         ctx!.strokeStyle = sel ? '#FFF' : (STATUS_COLORS[node.status] || '#98A2B3');
-        ctx!.lineWidth = sel ? 3 : 2; ctx!.stroke();
+        ctx!.lineWidth = sel ? 4 : (nodeBad ? 3 + pulse * 2 : 3);
+        if (nodeBad && !sel) ctx!.globalAlpha = 0.6 + pulse * 0.4;
+        ctx!.stroke();
         ctx!.setLineDash([]); ctx!.globalAlpha = 1;
 
         if (sel) {
@@ -266,12 +272,27 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
         ctx!.fillText(unmanaged ? '?' : node.type.charAt(0).toUpperCase(), node.x, node.y);
 
         if (transform.k > 0.5) {
+          // Measure label dimensions to draw a background pill behind the text
+          ctx!.font = '11px sans-serif';
+          const labelW = ctx!.measureText(node.label).width;
+          const showIp = transform.k > 0.8 && !!node.ip;
+          ctx!.font = '9px sans-serif';
+          const ipW = showIp ? ctx!.measureText(node.ip!).width : 0;
+          const boxW = Math.max(labelW, ipW) + 10;
+          const boxH = showIp ? 30 : 16;
+          const boxX = node.x - boxW / 2;
+          const boxY = node.y + 24;
+
+          ctx!.fillStyle = 'rgba(29, 30, 36, 0.55)';
+          roundRect(ctx!, boxX, boxY, boxW, boxH, 4);
+          ctx!.fill();
+
           ctx!.fillStyle = hov || sel ? '#FFF' : '#B0B0B0';
-          ctx!.font = '11px sans-serif'; ctx!.textBaseline = 'top';
-          ctx!.fillText(node.label, node.x, node.y + 28);
-          if (transform.k > 0.8 && node.ip) {
+          ctx!.font = '11px sans-serif'; ctx!.textAlign = 'center'; ctx!.textBaseline = 'top';
+          ctx!.fillText(node.label, node.x, boxY + 2);
+          if (showIp) {
             ctx!.fillStyle = '#808080'; ctx!.font = '9px sans-serif';
-            ctx!.fillText(node.ip, node.x, node.y + 42);
+            ctx!.fillText(node.ip!, node.x, boxY + 16);
           }
         }
       }
@@ -296,7 +317,11 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
     }
 
     drawRef.current = draw;
-    draw();
+
+    // Continuous animation loop — drives the pulse effect on unhealthy elements
+    let animFrame: number;
+    function animate() { draw(); animFrame = requestAnimationFrame(animate); }
+    animFrame = requestAnimationFrame(animate);
 
     // Zoom: disable pan when pressing down on a node so drag and pan don't compete
     const zoomBehavior = zoom<HTMLCanvasElement, unknown>()
@@ -356,7 +381,7 @@ export const TopologyCanvas: React.FC<Props> = ({ graph, width, height, onNodeCl
       if (n) onNodeClick(n.id);
     });
 
-    return () => { drawRef.current = null; };
+    return () => { drawRef.current = null; cancelAnimationFrame(animFrame); };
   }, [graph, width, height, onNodeClick, hiddenTypesKey]);
 
   return <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: `${height}px`, background: '#1D1E24' }} />;

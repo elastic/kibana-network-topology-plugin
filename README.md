@@ -123,7 +123,7 @@ Field mappings are documented in [`docs/field-reference.md`](docs/field-referenc
 │  Setup health check: template, pipeline, coverage    │
 ├──────────────────────────────────────────────────────┤
 │ Elasticsearch 8.19                                   │
-│  Index pattern: snmp-*                               │
+│  Data stream: logs-snmp.topology-default             │
 │  Ingest pipeline: snmp-device-enrichment             │
 │  Index template: snmp-network-o11y                   │
 └──────────────────────────────────────────────────────┘

@@ -7,7 +7,7 @@ CURL="curl -k -s -u ${ES_USER}:${ES_PASS}"
 
 echo "=== Network Topology Plugin: Elasticsearch Setup ==="
 
-echo "[1/3] Creating ingest pipeline: snmp-device-enrichment"
+echo "[1/2] Creating ingest pipeline: snmp-device-enrichment"
 $CURL -X PUT "${ES_URL}/_ingest/pipeline/snmp-device-enrichment" -H 'Content-Type: application/json' -d '
 {
   "description": "Enrich SNMP device data",
@@ -25,15 +25,16 @@ echo " done."
 # work: { "term": { "ip_addr.address": "192.168.10.0/24" } } matches all interface
 # IPs inside that subnet — this is how segment filtering resolves device membership.
 # ip_addr.network is keyword (not text) so terms aggregations work without .keyword.
-echo "[2/3] Creating index template: snmp-network-o11y"
-$CURL -X PUT "${ES_URL}/_index_template/snmp-network-o11y" -H 'Content-Type: application/json' -d '
+echo "[2/2] Creating index template: logs-snmp.topology@template (data stream)"
+$CURL -X PUT "${ES_URL}/_index_template/logs-snmp.topology@template" -H 'Content-Type: application/json' -d '
 {
-  "index_patterns": ["snmp-*", "logstash-snmp-*"],
+  "index_patterns": ["logs-snmp.*"],
+  "data_stream": {},
   "priority": 200,
   "template": {
     "settings": {
-      "number_of_shards": 1,
-      "number_of_replicas": 0,
+      "index.number_of_shards": 1,
+      "index.auto_expand_replicas": "0-1",
       "index.default_pipeline": "snmp-device-enrichment"
     },
     "mappings": {
@@ -140,8 +141,8 @@ $CURL -X PUT "${ES_URL}/_index_template/snmp-network-o11y" -H 'Content-Type: app
 }'
 echo " done."
 
-echo "[3/3] Creating initial index: snmp-topology"
-$CURL -X PUT "${ES_URL}/snmp-topology" -H 'Content-Type: application/json' -d '{}' 2>/dev/null || true
-echo " done."
+# Clean up any legacy concrete index that would conflict with the data stream
+$CURL -X DELETE "${ES_URL}/snmp-topology" 2>/dev/null || true
 echo ""
-echo "=== Setup complete. Run: node scripts/generate_sample_data.mjs ==="
+echo "=== Setup complete. Data stream auto-creates on first write. ==="
+echo "    Run: node scripts/generate_sample_data.mjs"

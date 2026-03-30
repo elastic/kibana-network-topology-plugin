@@ -13,7 +13,7 @@ export function registerSetupRoutes(router: IRouter, logger: Logger) {
 
         const [templateResult, pipelineResult, dataResult, coverageResult] = await Promise.allSettled([
           // 1. Index template
-          esClient.indices.existsIndexTemplate({ name: 'snmp-network-o11y' }),
+          esClient.indices.existsIndexTemplate({ name: 'logs-snmp.topology@template' }),
 
           // 2. Ingest pipeline
           esClient.ingest.getPipeline({ id: 'snmp-device-enrichment' }),
