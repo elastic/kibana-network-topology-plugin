@@ -5,7 +5,7 @@ import {
 } from '@elastic/eui';
 import { useApi } from '../hooks/use_api';
 import type { SegmentHealth } from '../../common';
-import { STATUS_COLORS } from '../../common';
+import { STATUS_EUI_COLORS } from '../../common';
 
 interface Props {
   onSegmentClick: (cidr: string) => void;
@@ -40,7 +40,7 @@ export const SegmentOverview: React.FC<Props> = ({ onSegmentClick, from, to, ref
           <EuiPanel hasBorder hasShadow={false} paddingSize="l" onClick={() => onSegmentClick(seg.segment)} style={{ cursor: 'pointer' }}>
             <EuiFlexGroup alignItems="center" gutterSize="s">
               <EuiFlexItem grow={false}>
-                <EuiIcon type="globe" size="l" color={STATUS_COLORS[seg.worstStatus] || STATUS_COLORS.unknown} />
+                <EuiIcon type="globe" size="l" color={STATUS_EUI_COLORS[seg.worstStatus] || 'subdued'} />
               </EuiFlexItem>
               <EuiFlexItem>
                 <EuiTitle size="s"><h3 style={{ fontFamily: 'monospace' }}>{seg.segment}</h3></EuiTitle>

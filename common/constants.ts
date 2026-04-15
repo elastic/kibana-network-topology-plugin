@@ -59,3 +59,34 @@ export const OSPF_STATE_COLORS: Record<string, string> = {
 // A device is considered down if no SNMP data has arrived within this window.
 // Default: 5 minutes — roughly 5× the standard Logstash interface polling interval (60s).
 export const DEVICE_DOWN_THRESHOLD_MS = 5 * 60 * 1000;
+
+// EUI semantic colour names for use with EUI components (EuiHealth, EuiIcon, EuiBadge, etc.).
+// These adapt automatically to Kibana's light/dark/high-contrast themes.
+// The hex constants above remain in place for the D3 canvas renderer.
+export const STATUS_EUI_COLORS: Record<string, string> = {
+  up:       'success',
+  down:     'danger',
+  degraded: 'warning',
+  unknown:  'subdued',
+};
+
+export const BGP_EUI_COLORS: Record<string, string> = {
+  Established: 'success',
+  Active:      'warning',
+  Connect:     'warning',
+  OpenSent:    'warning',
+  OpenConfirm: 'warning',
+  Idle:        'danger',
+  Down:        'danger',
+};
+
+export const OSPF_EUI_COLORS: Record<string, string> = {
+  Full:        'success',
+  '2-Way':     'success',
+  Loading:     'warning',
+  Exchange:    'warning',
+  ExStart:     'warning',
+  Init:        'warning',
+  Attempt:     'danger',
+  Down:        'danger',
+};

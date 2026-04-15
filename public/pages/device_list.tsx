@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   EuiBasicTable, EuiHealth, EuiSpacer,
-  EuiFlexGroup, EuiFlexItem, EuiCallOut,
+  EuiFlexGroup, EuiFlexItem, EuiCallOut, EuiText,
 } from '@elastic/eui';
 import type { Filter, Query } from '@kbn/es-query';
 import type { DataPublicPluginStart } from '@kbn/data-plugin/public';
@@ -11,7 +11,7 @@ import type { CoreStart } from '@kbn/core/public';
 import { useApi } from '../hooks/use_api';
 import { useDataViewSelector } from '../hooks/use_data_view_selector';
 import type { NetworkDevice } from '../../common';
-import { STATUS_COLORS } from '../../common';
+import { STATUS_EUI_COLORS } from '../../common';
 
 interface Props { site?: string; from: string; to: string; refreshKey: number; }
 
@@ -46,11 +46,12 @@ export const DeviceListView: React.FC<Props> = ({ site, from, to, refreshKey }) 
         filters: filters.length > 0 ? JSON.stringify(filters) : undefined,
         from,
         to,
+        index: selectedDataView?.getIndexPattern(),
       });
       setDevices(r.devices); setTotal(r.total); setError(null);
     } catch (e: any) { setError(e.message); }
     finally { setLoading(false); }
-  }, [api, site, page, pageSize, submittedQuery, filters, from, to]);
+  }, [api, site, page, pageSize, submittedQuery, filters, from, to, selectedDataView]);
 
   useEffect(() => { fetchData(); }, [fetchData, refreshKey]);
 
@@ -101,14 +102,14 @@ export const DeviceListView: React.FC<Props> = ({ site, from, to, refreshKey }) 
       <EuiSpacer size="m" />
       <EuiBasicTable items={devices} loading={loading}
         columns={[
-          { field: 'status', name: 'Status', width: '80px', render: (s: string) => <EuiHealth color={STATUS_COLORS[s] || '#98A2B3'}>{s}</EuiHealth> },
+          { field: 'status', name: 'Status', width: '80px', render: (s: string) => <EuiHealth color={STATUS_EUI_COLORS[s] || 'subdued'}>{s}</EuiHealth> },
           { field: 'name', name: 'Hostname', sortable: true },
           { field: 'ip', name: 'IP Address' },
           { field: 'type', name: 'Type' },
           { field: 'vendor', name: 'Vendor' },
           { field: 'site', name: 'Site' },
           { field: 'interfaceCount', name: 'Interfaces', width: '100px' },
-          { field: 'downInterfaceCount', name: 'Down', width: '80px', render: (c: number) => <span style={{ color: c > 0 ? STATUS_COLORS.down : 'inherit' }}>{c}</span> },
+          { field: 'downInterfaceCount', name: 'Down', width: '80px', render: (c: number) => <EuiText size="s" color={c > 0 ? 'danger' : 'default'}>{c}</EuiText> },
         ]}
         pagination={{ pageIndex: page, pageSize, totalItemCount: total, pageSizeOptions: [25, 50, 100] }}
         onChange={({ page: p }: any) => { if (p) { setPage(p.index); setPageSize(p.size); } }}

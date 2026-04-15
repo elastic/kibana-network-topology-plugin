@@ -274,6 +274,14 @@ export async function buildTopologyFromArpMac(
       const peerState = peerBucket.state?.buckets?.[0]?.key || 'Idle';
       const remoteAsn = peerBucket.remote_asn?.buckets?.[0]?.key;
       let neighbor = ipToDevice.get(remoteIp);
+      // If this IP is already an ARP-discovered unmanaged node and we have an ASN,
+      // upgrade its label — the raw IP is a fallback only.
+      if (neighbor && remoteAsn) {
+        const existingNode = nodes.find((n) => n.id === neighbor);
+        if (existingNode && existingNode.managed === false && !existingNode.label.startsWith('AS')) {
+          existingNode.label = `AS ${remoteAsn}`;
+        }
+      }
       if (!neighbor) {
         // External BGP peer — create an unmanaged node labeled with the ASN
         const nodeId = `AS${remoteAsn || '?'}-${remoteIp}`;

@@ -1,6 +1,6 @@
 import type { IRouter, Logger } from '@kbn/core/server';
 import { schema } from '@kbn/config-schema';
-import { API_ROUTES, DEFAULT_SNMP_INDEX } from '../../common';
+import { API_ROUTES, DEFAULT_SNMP_INDEX, DEVICE_DOWN_THRESHOLD_MS } from '../../common';
 
 export function registerSitesRoutes(router: IRouter, logger: Logger) {
   router.get(
@@ -38,6 +38,10 @@ export function registerSitesRoutes(router: IRouter, logger: Logger) {
                     down_interfaces: {
                       filter: { term: { 'interface.status.oper': 'down' } },
                     },
+                    total_interfaces: {
+                      cardinality: { field: 'interface.name' },
+                    },
+                    last_seen: { max: { field: '@timestamp' } },
                   },
                 },
               },
@@ -53,9 +57,13 @@ export function registerSitesRoutes(router: IRouter, logger: Logger) {
           let upCount = 0, downCount = 0, degradedCount = 0;
 
           devices.forEach((d: any) => {
-            const down = d.down_interfaces?.doc_count || 0;
-            if (down > 2) downCount++;
-            else if (down > 0) degradedCount++;
+            const downIfaces = d.down_interfaces?.doc_count || 0;
+            const totalIfaces = d.total_interfaces?.value || 0;
+            const lastSeen = d.last_seen?.value_as_string || '';
+            const msSince = lastSeen ? Date.now() - new Date(lastSeen).getTime() : Infinity;
+
+            if (msSince > DEVICE_DOWN_THRESHOLD_MS) downCount++;
+            else if (totalIfaces > 0 && downIfaces === totalIfaces) degradedCount++;
             else upCount++;
           });
 

@@ -6,7 +6,7 @@ import {
 } from '@elastic/eui';
 import { useApi } from '../hooks/use_api';
 import type { DeviceDetailResponse } from '../../common';
-import { STATUS_COLORS, DEVICE_TYPE_CONFIG, BGP_STATE_COLORS, OSPF_STATE_COLORS } from '../../common';
+import { DEVICE_TYPE_CONFIG, STATUS_EUI_COLORS, BGP_EUI_COLORS, OSPF_EUI_COLORS } from '../../common';
 
 interface Props { deviceId: string; onClose: () => void; from: string; to: string; }
 
@@ -38,7 +38,7 @@ export const DeviceFlyout: React.FC<Props> = ({ deviceId, onClose, from, to }) =
             <EuiFlexGroup alignItems="center" gutterSize="m">
               <EuiFlexItem grow={false}><EuiBadge color={DEVICE_TYPE_CONFIG[data.device.type]?.color || '#98A2B3'}>{data.device.type}</EuiBadge></EuiFlexItem>
               <EuiFlexItem><EuiTitle size="m"><h2>{data.device.name}</h2></EuiTitle></EuiFlexItem>
-              <EuiFlexItem grow={false}><EuiHealth color={STATUS_COLORS[data.device.status] || '#98A2B3'}>{data.device.status}</EuiHealth></EuiFlexItem>
+              <EuiFlexItem grow={false}><EuiHealth color={STATUS_EUI_COLORS[data.device.status] || 'subdued'}>{data.device.status}</EuiHealth></EuiFlexItem>
             </EuiFlexGroup>
             <EuiSpacer size="s" />
             <EuiDescriptionList type="inline" compressed listItems={[
@@ -63,7 +63,7 @@ export const DeviceFlyout: React.FC<Props> = ({ deviceId, onClose, from, to }) =
             </EuiTabs>
             <EuiSpacer size="m" />
             {tab === 'interfaces' && <EuiBasicTable items={data.interfaces} compressed columns={[
-              { field: 'operStatus', name: 'Status', width: '70px', render: (s: string) => <EuiHealth color={STATUS_COLORS[s] || '#98A2B3'}>{s}</EuiHealth> },
+              { field: 'operStatus', name: 'Status', width: '70px', render: (s: string) => <EuiHealth color={STATUS_EUI_COLORS[s] || 'subdued'}>{s}</EuiHealth> },
               { field: 'name', name: 'Interface', sortable: true },
               { field: 'speed', name: 'Speed', width: '100px', render: fmtSpeed },
               { field: 'trafficIn', name: 'In', render: fmtBytes },
@@ -75,7 +75,7 @@ export const DeviceFlyout: React.FC<Props> = ({ deviceId, onClose, from, to }) =
               { field: 'ip', name: 'IP Address' }, { field: 'mac', name: 'MAC Address' },
             ]} />}
             {tab === 'bgp' && <EuiBasicTable items={data.bgpPeers} compressed columns={[
-              { field: 'state', name: 'State', width: '100px', render: (s: string) => <EuiHealth color={BGP_STATE_COLORS[s] || '#98A2B3'}>{s}</EuiHealth> },
+              { field: 'state', name: 'State', width: '100px', render: (s: string) => <EuiHealth color={BGP_EUI_COLORS[s] || 'subdued'}>{s}</EuiHealth> },
               { field: 'remoteIP', name: 'Peer IP' },
               { field: 'remoteASN', name: 'Remote AS', width: '90px' },
               { field: 'prefixesReceived', name: 'Pfx RX', width: '90px', render: fmtNum },
@@ -85,7 +85,7 @@ export const DeviceFlyout: React.FC<Props> = ({ deviceId, onClose, from, to }) =
               { field: 'outUpdates', name: 'Upd Out', width: '80px', render: fmtNum },
             ]} />}
             {tab === 'ospf' && <EuiBasicTable items={data.ospfNeighbors} compressed columns={[
-              { field: 'state', name: 'State', width: '90px', render: (s: string) => <EuiHealth color={OSPF_STATE_COLORS[s] || '#98A2B3'}>{s}</EuiHealth> },
+              { field: 'state', name: 'State', width: '90px', render: (s: string) => <EuiHealth color={OSPF_EUI_COLORS[s] || 'subdued'}>{s}</EuiHealth> },
               { field: 'neighborIP', name: 'Neighbor IP' },
               { field: 'routerID', name: 'Router ID' },
               { field: 'areaID', name: 'Area', width: '100px' },

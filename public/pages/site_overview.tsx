@@ -5,7 +5,7 @@ import {
 } from '@elastic/eui';
 import { useApi } from '../hooks/use_api';
 import type { SiteHealth } from '../../common';
-import { STATUS_COLORS } from '../../common';
+import { STATUS_EUI_COLORS } from '../../common';
 
 interface Props { onSiteClick: (site: string) => void; from: string; to: string; refreshKey: number; }
 
@@ -44,7 +44,7 @@ export const SiteOverview: React.FC<Props> = ({ onSiteClick, from, to, refreshKe
             <EuiPanel hasBorder hasShadow={false} paddingSize="l" onClick={() => onSiteClick(site.site)} style={{ cursor: 'pointer' }}>
               <EuiFlexGroup alignItems="center" gutterSize="s">
                 <EuiFlexItem grow={false}>
-                  <EuiIcon type="globe" size="l" color={STATUS_COLORS[site.worstStatus] || STATUS_COLORS.unknown} />
+                  <EuiIcon type="globe" size="l" color={STATUS_EUI_COLORS[site.worstStatus] || 'subdued'} />
                 </EuiFlexItem>
                 <EuiFlexItem><EuiTitle size="s"><h3>{site.site}</h3></EuiTitle></EuiFlexItem>
               </EuiFlexGroup>
