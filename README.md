@@ -63,6 +63,7 @@ yarn kbn bootstrap
 ### 2. Start Elasticsearch (Docker)
 
 ```bash
+# From the plugin's repo root
 docker compose -f docker-compose.dev.yml up -d
 ```
 
@@ -76,6 +77,7 @@ node scripts/generate_sample_data.mjs
 ```
 
 > Note: `scripts/setup_elasticsearch.sh` and the data generators default to:
+>
 > - Elasticsearch URL: `http://localhost:9200`
 > - credentials: `elastic / changeme`
 
@@ -177,6 +179,7 @@ bin/kibana-plugin install file:///absolute/path/to/networkTopology-8.19.12.zip
 See [`docs/collectors/logstash.conf`](docs/collectors/logstash.conf) for a consolidated Logstash pipeline that walks IF-MIB, IP-MIB (ARP + IP address), BRIDGE-MIB, BGP4-MIB, and OSPF-MIB per device and emits correctly mapped documents.
 
 Alternatives:
+
 - [`docs/collectors/telegraf.toml`](docs/collectors/telegraf.toml) — Telegraf SNMP input plugin config
 - [`docs/collectors/elastic-agent.md`](docs/collectors/elastic-agent.md) — Elastic Agent notes
 
@@ -210,14 +213,14 @@ Field mappings are documented in [`docs/field-reference.md`](docs/field-referenc
 
 Document types written per SNMP poll cycle (one per device):
 
-| Document type | Key field | Data source |
-|---|---|---|
-| Interface metrics | `interface.name` | IF-MIB ifTable |
-| ARP entries | `arp.mac_addr` | IP-MIB ipNetToMediaTable |
-| MAC table entries | `mac_table.mac_addr` | BRIDGE-MIB dot1dTpFdbTable |
-| IP address entries | `ip_addr.address` | IP-MIB ipAddrTable |
-| BGP peer sessions | `bgp_peer.remote_ip` | BGP4-MIB bgpPeerTable |
-| OSPF neighbors | `ospf_neighbor.neighbor_ip` | OSPF-MIB ospfNbrTable |
+| Document type      | Key field                   | Data source                |
+| ------------------ | --------------------------- | -------------------------- |
+| Interface metrics  | `interface.name`            | IF-MIB ifTable             |
+| ARP entries        | `arp.mac_addr`              | IP-MIB ipNetToMediaTable   |
+| MAC table entries  | `mac_table.mac_addr`        | BRIDGE-MIB dot1dTpFdbTable |
+| IP address entries | `ip_addr.address`           | IP-MIB ipAddrTable         |
+| BGP peer sessions  | `bgp_peer.remote_ip`        | BGP4-MIB bgpPeerTable      |
+| OSPF neighbors     | `ospf_neighbor.neighbor_ip` | OSPF-MIB ospfNbrTable      |
 
 ---
 
