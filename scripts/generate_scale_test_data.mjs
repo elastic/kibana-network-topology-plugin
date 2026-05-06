@@ -3,10 +3,9 @@
  * Large-scale SNMP topology generator: 1000 nodes with BGP/OSPF/ARP interconnections
  * Usage: node scripts/generate_scale_test_data.mjs [ES_HOST] [USER] [PASSWORD]
  */
-process.env.NODE_TLS_REJECT_UNAUTHORIZED='0';
-const ES=process.argv[2]||'https://localhost:9200';
+const ES=process.argv[2]||'http://localhost:9200';
 const U=process.argv[3]||'elastic';
-const P=process.argv[4]||'09ed4afed47fd7533d9eef6438cefd81cdde512b306304d55dec0e35e77f9f8d';
+const P=process.argv[4]||'changeme';
 const IDX='logs-snmp.topology-default';
 const AUTH=Buffer.from(`${U}:${P}`).toString('base64');
 
