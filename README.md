@@ -21,10 +21,10 @@ Kibana / Elasticsearch **8.19.12**
 ### Prerequisites
 
 - Docker (4 GB+ RAM allocated)
-- Node.js **22.22.0** (match Kibana's `.node-version` — use `nvm use` from the repo root)
+- Node.js **22.22.0** (match Kibana `v8.19.12` `.node-version`)
 - Yarn 1.x (classic)
 
-### 1. Clone Kibana and place the plugin
+### 1. Clone Kibana (separate checkout)
 
 ```bash
 git clone https://github.com/elastic/kibana.git
@@ -35,37 +35,118 @@ nvm use
 yarn kbn bootstrap
 ```
 
-The plugin lives at `plugins/kibana-network-topology-plugin/` inside the Kibana repo. If you are working from a separate checkout, copy or symlink it there.
+This plugin is intended to live **outside** the Kibana repository (separate repo + separate releases).
+However, Kibana’s dev optimizer expects plugins to be located under `kibana/plugins/` for `yarn dev --watch`.
 
-### 2. Start Elasticsearch + Kibana (Docker)
+For the fastest local development loop, link this repo into your Kibana checkout using **either** a symlink or a git worktree.
+
+#### Option A: symlink (simplest)
 
 ```bash
-docker compose -f plugins/kibana-network-topology-plugin/docker-compose.dev.yml up -d
+ln -s "/absolute/path/to/kibana-network-topology-plugin" "/absolute/path/to/kibana/plugins/networkTopology"
 ```
 
-### 3. Set up index templates and load sample data
+#### Option B: git worktree (recommended if you want to commit from the plugin repo)
 
 ```bash
-cd plugins/kibana-network-topology-plugin
+cd /absolute/path/to/kibana-network-topology-plugin
+git worktree add "/absolute/path/to/kibana/plugins/networkTopology" HEAD
+```
 
+After linking, re-run bootstrap once in the Kibana repo (so dependencies are up to date):
+
+```bash
+cd /absolute/path/to/kibana
+yarn kbn bootstrap
+```
+
+### 2. Start Elasticsearch (Docker)
+
+```bash
+# From the plugin's repo root
+docker compose -f docker-compose.dev.yml up -d
+```
+
+### 3. Set up Elasticsearch resources + load sample data
+
+```bash
 chmod +x scripts/setup_elasticsearch.sh
 ./scripts/setup_elasticsearch.sh
 
 node scripts/generate_sample_data.mjs
 ```
 
-### 4. Start Kibana in dev mode
+> Note: `scripts/setup_elasticsearch.sh` and the data generators default to:
+>
+> - Elasticsearch URL: `http://localhost:9200`
+> - credentials: `elastic / changeme`
+
+### 4. Configure Kibana to use local Elasticsearch
+
+Kibana must authenticate to Elasticsearch as a service user (not `elastic`). For local dev, set a password for `kibana_system` in the Docker container:
+
+```bash
+docker exec -it es-network-topology /usr/share/elasticsearch/bin/elasticsearch-reset-password -u kibana_system -i
+```
+
+Then configure Kibana (example `config/kibana.dev.yml`):
+
+```yaml
+elasticsearch:
+  hosts: http://localhost:9200
+  username: kibana_system
+  password: <the password you set above>
+  ssl:
+    verificationMode: none
+```
+
+### 5. Start Kibana + build the plugin UI bundle (two terminals)
+
+Start Kibana in one terminal:
 
 ```bash
 # From the Kibana repo root
 yarn start --no-base-path
 ```
 
-### 5. Open in browser
+In a second terminal, build the plugin UI bundle in watch mode (this is required so Kibana can serve `networkTopology.plugin.js`):
+
+```bash
+cd /absolute/path/to/kibana/plugins/networkTopology
+nvm use 22.22.0
+yarn dev --watch
+```
+
+### 6. Open in browser
 
 Navigate to **http://localhost:5601** → **Observability** → **Network Topology**
 
 Default login: `elastic` / `changeme`
+
+> **Data shows 0 devices?** Check the time range. Sample data uses current timestamps, so use **Last 15 minutes** and click **Refresh**.
+
+---
+
+## Troubleshooting
+
+### `.../bundles/plugin/networkTopology/...networkTopology.plugin.js` returns 404
+
+This indicates Kibana registered the plugin, but the UI bundle is not available.
+
+Most commonly, `yarn dev --watch` is not running (or crashed). Ensure you have a second terminal running:
+
+```bash
+cd /absolute/path/to/kibana/plugins/networkTopology
+yarn dev --watch
+```
+
+### Setup page says “Recent data (last 1h): No data found” but `_count` is > 0
+
+The plugin health checks look for **recent** documents. If you loaded sample data earlier, switch the time range to **Last 15 minutes** and/or regenerate sample data:
+
+```bash
+node scripts/generate_sample_data.mjs http://localhost:9200 elastic changeme
+```
 
 ---
 
@@ -74,8 +155,8 @@ Default login: `elastic` / `changeme`
 ### Build the plugin zip
 
 ```bash
-cd plugins/kibana-network-topology-plugin
-node ../../scripts/plugin_helpers build --kibana-version 8.19.12
+cd /absolute/path/to/kibana/plugins/networkTopology
+yarn build --kibana-version 8.19.12
 ```
 
 Output: `build/networkTopology-8.19.12.zip`
@@ -98,6 +179,7 @@ bin/kibana-plugin install file:///absolute/path/to/networkTopology-8.19.12.zip
 See [`docs/collectors/logstash.conf`](docs/collectors/logstash.conf) for a consolidated Logstash pipeline that walks IF-MIB, IP-MIB (ARP + IP address), BRIDGE-MIB, BGP4-MIB, and OSPF-MIB per device and emits correctly mapped documents.
 
 Alternatives:
+
 - [`docs/collectors/telegraf.toml`](docs/collectors/telegraf.toml) — Telegraf SNMP input plugin config
 - [`docs/collectors/elastic-agent.md`](docs/collectors/elastic-agent.md) — Elastic Agent notes
 
@@ -131,14 +213,14 @@ Field mappings are documented in [`docs/field-reference.md`](docs/field-referenc
 
 Document types written per SNMP poll cycle (one per device):
 
-| Document type | Key field | Data source |
-|---|---|---|
-| Interface metrics | `interface.name` | IF-MIB ifTable |
-| ARP entries | `arp.mac_addr` | IP-MIB ipNetToMediaTable |
-| MAC table entries | `mac_table.mac_addr` | BRIDGE-MIB dot1dTpFdbTable |
-| IP address entries | `ip_addr.address` | IP-MIB ipAddrTable |
-| BGP peer sessions | `bgp_peer.remote_ip` | BGP4-MIB bgpPeerTable |
-| OSPF neighbors | `ospf_neighbor.neighbor_ip` | OSPF-MIB ospfNbrTable |
+| Document type      | Key field                   | Data source                |
+| ------------------ | --------------------------- | -------------------------- |
+| Interface metrics  | `interface.name`            | IF-MIB ifTable             |
+| ARP entries        | `arp.mac_addr`              | IP-MIB ipNetToMediaTable   |
+| MAC table entries  | `mac_table.mac_addr`        | BRIDGE-MIB dot1dTpFdbTable |
+| IP address entries | `ip_addr.address`           | IP-MIB ipAddrTable         |
+| BGP peer sessions  | `bgp_peer.remote_ip`        | BGP4-MIB bgpPeerTable      |
+| OSPF neighbors     | `ospf_neighbor.neighbor_ip` | OSPF-MIB ospfNbrTable      |
 
 ---
 

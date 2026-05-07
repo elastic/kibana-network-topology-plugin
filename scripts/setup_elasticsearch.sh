@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ES_URL="${1:-https://localhost:9200}"
+ES_URL="${1:-http://localhost:9200}"
 ES_USER="${2:-elastic}"
-ES_PASS="${3:-953267d8b378226013202bca3431790dea47027c71a04c7e80545bbb57001286}"
-CURL="curl -k -s -u ${ES_USER}:${ES_PASS}"
+ES_PASS="${3:-changeme}"
+CURL="curl -s -u ${ES_USER}:${ES_PASS}"
 
 echo "=== Network Topology Plugin: Elasticsearch Setup ==="
 
