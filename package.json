@@ -10,7 +10,10 @@
     "plugin-helpers": "node ../../scripts/plugin_helpers",
     "kbn": "node ../../scripts/kbn",
     "test:jest": "../../node_modules/.bin/jest --config jest.config.js",
-    "lint": "../../node_modules/.bin/eslint . --ext .ts,.tsx",
+    "lint": "node ../../scripts/eslint.js --ext .js,.jsx,.mjs,.cjs,.ts,.tsx .",
+    "lint:fix": "node ../../scripts/eslint.js --ext .js,.jsx,.mjs,.cjs,.ts,.tsx --fix .",
+    "check:license_headers": "node scripts/check_license_headers.mjs",
+    "fix:license_headers": "node scripts/add_license_headers.mjs",
     "type-check": "../../node_modules/.bin/tsc --noEmit"
   },
   "dependencies": {

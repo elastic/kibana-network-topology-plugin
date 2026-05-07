@@ -235,4 +235,8 @@ Document types written per SNMP poll cycle (one per device):
 
 ## License
 
-Elastic License 2.0
+Elastic License 2.0. See `LICENSE.txt`.
+
+## Development policy
+
+- License headers are required on source files. See `docs/license_headers.md`.

@@ -1,0 +1,6 @@
+Source code in this repository is covered by the "Elastic License 2.0", as noted
+in the applicable file header.
+
+The full text of the Elastic License 2.0 is available in:
+- licenses/ELASTIC-LICENSE-2.0.txt
+
