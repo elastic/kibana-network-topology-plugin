@@ -2,6 +2,12 @@
 
 A Kibana Observability plugin for **network monitoring and topology mapping**. Collects SNMP data (device identity, interface metrics, ARP/MAC tables, routing protocol adjacencies) via Logstash or Telegraf, stores it in Elasticsearch, and renders an interactive topology graph with drill-down device detail.
 
+> [!NOTE]
+>
+> ### Technical Preview
+>
+> This functionality is in technical preview and may be changed or removed completely in a future release. Elastic will work to fix any issues, but features in technical preview are not subject to the support SLA of official GA features.
+
 ## Features
 
 - **Site overview** — Health card grid showing aggregated device and interface status per site
