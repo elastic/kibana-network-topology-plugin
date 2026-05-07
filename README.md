@@ -30,7 +30,7 @@ Kibana / Elasticsearch **8.19.12**
 A single script handles the full setup: clones Kibana at the pinned version, clones this plugin into `<kibana>/plugins/networkTopology`, runs `yarn kbn bootstrap`, and writes a multi-root code workspace (`.code-workspace`) with both Kibana and the plugin as separate roots. The format is understood by VSCode, Cursor, and other VSCode-compatible editors.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/elastic/kibana-network-topology-plugin/main/scripts/bootstrap.sh | bash
+curl -fsSL https://github.com/elastic/kibana-network-topology-plugin/blob/main/scripts/bootstrap.sh | bash
 ```
 
 By default it sets up in your current working directory. Open the generated workspace in your editor:
