@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+/*
+ * Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
+ * or more contributor license agreements. Licensed under the Elastic License
+ * 2.0; you may not use this file except in compliance with the Elastic License
+ * 2.0.
+ */
+
 const ES=process.argv[2]||'http://localhost:9200',U=process.argv[3]||'elastic',P=process.argv[4]||'changeme';
 const IDX='logs-snmp.topology-default',AUTH=Buffer.from(`${U}:${P}`).toString('base64');
 const SITES=[{name:'HQ-DC1',building:'Main',subnet:'10.1',devices:[

@@ -1,0 +1,8 @@
+Network Topology — Kibana Plugin
+
+Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
+or more contributor license agreements.
+
+This product includes software developed by Elasticsearch B.V. and contributors.
+See the source repository history for contributor attribution.
+
