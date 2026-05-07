@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+/*
+ * Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
+ * or more contributor license agreements. Licensed under the Elastic License
+ * 2.0; you may not use this file except in compliance with the Elastic License
+ * 2.0.
+ */
+
 /**
  * Large-scale SNMP topology generator: 1000 nodes with BGP/OSPF/ARP interconnections
  * Usage: node scripts/generate_scale_test_data.mjs [ES_HOST] [USER] [PASSWORD]
