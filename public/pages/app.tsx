@@ -91,7 +91,7 @@ export const NetworkTopologyApp: React.FC = () => {
                     Network Topology &nbsp;
                     <EuiBetaBadge
                       label="Technical preview"
-                      tooltipContent="This functionality is in technical preview and may be changed or removed completely in a future release. Elastic will work to fix any issues, but features in technical preview are not subject to the support SLA of official GA features."
+                      tooltipContent="This functionality is in technical preview and is not ready for production usage. Technical preview features may change or be removed at any time. Elastic will work to fix any issues, but features in technical preview are not subject to the support SLA of official GA features. Specific Support terms apply."
                     />
                   </h1>
                 </EuiTitle>
