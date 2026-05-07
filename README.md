@@ -21,55 +21,65 @@ Kibana / Elasticsearch **8.19.12**
 ### Prerequisites
 
 - Docker (4 GB+ RAM allocated)
-- Node.js **22.22.0** (match Kibana `v8.19.12` `.node-version`)
+- Node.js **22.22.0** managed via `nvm` (matches Kibana `v8.19.12` `.node-version`)
 - Yarn 1.x (classic)
+- `git` and a working GitHub HTTPS credential (the bootstrap clones via HTTPS; if the plugin repo is private, run `gh auth login` first)
 
-### 1. Clone Kibana (separate checkout)
+### 1. Run the bootstrap script
+
+A single script handles the full setup: clones Kibana at the pinned version, clones this plugin into `<kibana>/plugins/networkTopology`, runs `yarn kbn bootstrap`, and writes a multi-root code workspace (`.code-workspace`) with both Kibana and the plugin as separate roots. The format is understood by VSCode, Cursor, and other VSCode-compatible editors.
 
 ```bash
-git clone https://github.com/elastic/kibana.git
-cd kibana
-git checkout v8.19.12
+curl -fsSL https://raw.githubusercontent.com/elastic/kibana-network-topology-plugin/main/scripts/bootstrap.sh | bash
+```
 
+By default it sets up in your current working directory. Open the generated workspace in your editor:
+
+```bash
+code network-topology.code-workspace      # or: cursor network-topology.code-workspace
+```
+
+Common flags (pass after `--` so they reach the script, not `bash`):
+
+```bash
+curl -fsSL <url> | bash -s -- --dir ~/dev/network-topology       # custom parent directory, ignored if an existing kibana checkout is reused
+curl -fsSL <url> | bash -s -- --kibana /path/to/existing/kibana  # reuse an existing Kibana checkout
+curl -fsSL <url> | bash -s -- --no-workspace                     # skip the .code-workspace file
+curl -fsSL <url> | bash -s -- --no-bootstrap                     # skip yarn kbn bootstrap
+```
+
+Re-running is safe: existing checkouts are detected and skipped, and the workspace file isn't overwritten if it already exists. Kibana is fetched as a partial clone (`--filter=blob:none --branch v8.19.12`) so the initial download is hundreds of MB instead of multi-GB.
+
+<details>
+<summary>What the script does (manual equivalent)</summary>
+
+```bash
+git clone --filter=blob:none --branch v8.19.12 \
+  https://github.com/elastic/kibana.git
+git clone https://github.com/elastic/kibana-network-topology-plugin.git \
+  kibana/plugins/networkTopology
+
+cd kibana
 nvm use
 yarn kbn bootstrap
 ```
 
-This plugin is intended to live **outside** the Kibana repository (separate repo + separate releases).
-However, Kibana’s dev optimizer expects plugins to be located under `kibana/plugins/` for `yarn dev --watch`.
+The plugin lives at `<kibana>/plugins/networkTopology` as a normal git clone. Kibana's `.gitignore` excludes `plugins/*`, so the two repos stay independent.
 
-For the fastest local development loop, link this repo into your Kibana checkout using **either** a symlink or a git worktree.
-
-#### Option A: symlink (simplest)
-
-```bash
-ln -s "/absolute/path/to/kibana-network-topology-plugin" "/absolute/path/to/kibana/plugins/networkTopology"
-```
-
-#### Option B: git worktree (recommended if you want to commit from the plugin repo)
-
-```bash
-cd /absolute/path/to/kibana-network-topology-plugin
-git worktree add "/absolute/path/to/kibana/plugins/networkTopology" HEAD
-```
-
-After linking, re-run bootstrap once in the Kibana repo (so dependencies are up to date):
-
-```bash
-cd /absolute/path/to/kibana
-yarn kbn bootstrap
-```
+</details>
 
 ### 2. Start Elasticsearch (Docker)
 
 ```bash
-# From the plugin's repo root
+# From the plugin directory inside Kibana:
+cd <kibana>/plugins/networkTopology
 docker compose -f docker-compose.dev.yml up -d
 ```
 
 ### 3. Set up Elasticsearch resources + load sample data
 
 ```bash
+# Still from <kibana>/plugins/networkTopology:
 chmod +x scripts/setup_elasticsearch.sh
 ./scripts/setup_elasticsearch.sh
 
