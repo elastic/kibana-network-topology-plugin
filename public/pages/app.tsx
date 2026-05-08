@@ -7,9 +7,19 @@
 
 import React, { useState, useCallback } from 'react';
 import {
-  EuiPage, EuiPageBody, EuiPageHeader, EuiPageHeaderSection,
-  EuiTitle, EuiTabs, EuiTab, EuiBreadcrumbs, EuiSpacer,
-  EuiFlexGroup, EuiFlexItem, EuiSuperDatePicker,
+  EuiPage,
+  EuiPageBody,
+  EuiPageHeader,
+  EuiPageHeaderSection,
+  EuiTitle,
+  EuiTabs,
+  EuiTab,
+  EuiBreadcrumbs,
+  EuiSpacer,
+  EuiFlexGroup,
+  EuiFlexItem,
+  EuiSuperDatePicker,
+  EuiBetaBadge,
 } from '@elastic/eui';
 import { SiteOverview } from './site_overview';
 import { SegmentOverview } from './segment_overview';
@@ -46,19 +56,22 @@ export const NetworkTopologyApp: React.FC = () => {
   const handleTimeChange = useCallback(({ start: s, end: e }: { start: string; end: string }) => {
     setStart(s);
     setEnd(e);
-    setRefreshKey(k => k + 1);
+    setRefreshKey((k) => k + 1);
   }, []);
 
   const handleRefresh = useCallback(({ start: s, end: e }: { start: string; end: string }) => {
     setStart(s);
     setEnd(e);
-    setRefreshKey(k => k + 1);
+    setRefreshKey((k) => k + 1);
   }, []);
 
-  const handleRefreshChange = useCallback(({ isPaused: ip, refreshInterval: ri }: { isPaused: boolean; refreshInterval: number }) => {
-    setIsPaused(ip);
-    setRefreshInterval(ri);
-  }, []);
+  const handleRefreshChange = useCallback(
+    ({ isPaused: ip, refreshInterval: ri }: { isPaused: boolean; refreshInterval: number }) => {
+      setIsPaused(ip);
+      setRefreshInterval(ri);
+    },
+    []
+  );
 
   const breadcrumbs = [{ text: 'Network Topology', onClick: handleBackToOverview }];
   if (scope.site) breadcrumbs.push({ text: scope.site, onClick: () => {} });
@@ -73,7 +86,15 @@ export const NetworkTopologyApp: React.FC = () => {
             <EuiSpacer size="s" />
             <EuiFlexGroup alignItems="center" gutterSize="m" responsive={false}>
               <EuiFlexItem grow={false}>
-                <EuiTitle size="l"><h1>Network Topology</h1></EuiTitle>
+                <EuiTitle size="l">
+                  <h1>
+                    Network Topology &nbsp;
+                    <EuiBetaBadge
+                      label="Technical preview"
+                      tooltipContent="This functionality is in technical preview and is not ready for production usage. Technical preview features may change or be removed at any time. Elastic will work to fix any issues, but features in technical preview are not subject to the support SLA of official GA features. Specific Support terms apply."
+                    />
+                  </h1>
+                </EuiTitle>
               </EuiFlexItem>
               <EuiFlexItem />
               <EuiFlexItem grow={false}>
@@ -94,7 +115,13 @@ export const NetworkTopologyApp: React.FC = () => {
         <EuiTabs>
           {(['overview', 'topology', 'devices', 'setup'] as ViewMode[]).map((tab) => (
             <EuiTab key={tab} isSelected={viewMode === tab} onClick={() => setViewMode(tab)}>
-              {tab === 'overview' ? 'Overview' : tab === 'topology' ? 'Topology Map' : tab === 'devices' ? 'Devices' : 'Setup'}
+              {tab === 'overview'
+                ? 'Overview'
+                : tab === 'topology'
+                ? 'Topology Map'
+                : tab === 'devices'
+                ? 'Devices'
+                : 'Setup'}
             </EuiTab>
           ))}
         </EuiTabs>
@@ -103,15 +130,38 @@ export const NetworkTopologyApp: React.FC = () => {
 
         {viewMode === 'overview' && (
           <>
-            <SiteOverview onSiteClick={handleSiteClick} from={start} to={end} refreshKey={refreshKey} />
+            <SiteOverview
+              onSiteClick={handleSiteClick}
+              from={start}
+              to={end}
+              refreshKey={refreshKey}
+            />
             <EuiSpacer size="xl" />
-            <EuiTitle size="s"><h2>Network Segments</h2></EuiTitle>
+            <EuiTitle size="s">
+              <h2>Network Segments</h2>
+            </EuiTitle>
             <EuiSpacer size="m" />
-            <SegmentOverview onSegmentClick={handleSegmentClick} from={start} to={end} refreshKey={refreshKey} />
+            <SegmentOverview
+              onSegmentClick={handleSegmentClick}
+              from={start}
+              to={end}
+              refreshKey={refreshKey}
+            />
           </>
         )}
-        {viewMode === 'topology' && <TopologyView site={scope.site} cidr={scope.cidr} onBackToOverview={handleBackToOverview} from={start} to={end} refreshKey={refreshKey} />}
-        {viewMode === 'devices' && <DeviceListView site={scope.site} from={start} to={end} refreshKey={refreshKey} />}
+        {viewMode === 'topology' && (
+          <TopologyView
+            site={scope.site}
+            cidr={scope.cidr}
+            onBackToOverview={handleBackToOverview}
+            from={start}
+            to={end}
+            refreshKey={refreshKey}
+          />
+        )}
+        {viewMode === 'devices' && (
+          <DeviceListView site={scope.site} from={start} to={end} refreshKey={refreshKey} />
+        )}
         {viewMode === 'setup' && <SetupGuide />}
       </EuiPageBody>
     </EuiPage>
