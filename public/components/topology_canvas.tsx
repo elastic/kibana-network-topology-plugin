@@ -37,8 +37,9 @@ const R = 20;
 const MIN_H_SPACING = 100; // horizontal
 const MIN_V_SPACING = 120; // vertical (row-to-row)
 const MAX_ROW_WIDTH = 12; // max nodes per row before wrapping within the same tier
-// Overlay (pulsing unhealthy elements) is throttled to 24 fps. Pulse period is ~2 s,
-// so sub-1% change per frame at 24 fps — visually indistinguishable from native rate.
+// Overlay animation (pulsing unhealthy elements) is throttled to 24 fps. Pulse period is ~2 s,
+// so sub-1% change per frame at 24 fps — visually indistinguishable from native rate
+// while providing significant CPU savings vs uncapped 60+ fps.
 const OVERLAY_FPS = 24;
 const FRAME_INTERVAL_MS = 1000 / OVERLAY_FPS;
 
@@ -133,10 +134,7 @@ function computeLayout(
   return positions;
 }
 
-// Configures a canvas's backing store to match its CSS size at the device pixel ratio,
-// and applies a matching context scale so drawing code can stay in CSS-pixel coordinates.
-// Setting canvas.width / .height resets context state — that's why ctx.scale is bundled
-// here so it cannot be forgotten on resize.
+// Configures DPR scaling for a canvas.
 function setupCanvas(c: HTMLCanvasElement, w: number, h: number, dpr: number) {
   c.width = w * dpr;
   c.height = h * dpr;
