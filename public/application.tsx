@@ -12,7 +12,7 @@ import type { DataPublicPluginStart } from '@kbn/data-plugin/public';
 import type { UnifiedSearchPublicPluginStart } from '@kbn/unified-search-plugin/public';
 import { KibanaRenderContextProvider } from '@kbn/react-kibana-context-render';
 import { KibanaContextProvider } from '@kbn/kibana-react-plugin/public';
-import { Router, Route, Switch } from 'react-router-dom';
+import { Router, Route } from '@kbn/shared-ux-router';
 import { NetworkTopologyApp } from './pages/app';
 
 export function renderApp(
@@ -25,9 +25,7 @@ export function renderApp(
     <KibanaRenderContextProvider {...core}>
       <KibanaContextProvider services={{ ...core, data, unifiedSearch }}>
         <Router history={history}>
-          <Switch>
-            <Route path="/" component={NetworkTopologyApp} />
-          </Switch>
+          <Route path="/" component={NetworkTopologyApp} />
         </Router>
       </KibanaContextProvider>
     </KibanaRenderContextProvider>,

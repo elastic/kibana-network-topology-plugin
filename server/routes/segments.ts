@@ -5,6 +5,8 @@
  * 2.0.
  */
 
+/* eslint-disable no-bitwise */
+
 import type { IRouter, Logger } from '@kbn/core/server';
 import { schema } from '@kbn/config-schema';
 import { API_ROUTES, DEFAULT_SNMP_INDEX, DEVICE_DOWN_THRESHOLD_MS } from '../../common';
@@ -15,9 +17,9 @@ export function registerSegmentsRoutes(router: IRouter, logger: Logger) {
       path: API_ROUTES.SEGMENTS,
       validate: {
         query: schema.object({
-          from:  schema.string({ defaultValue: 'now-15m' }),
-          to:    schema.string({ defaultValue: 'now' }),
-          site:  schema.maybe(schema.string()),
+          from: schema.string({ defaultValue: 'now-15m' }),
+          to: schema.string({ defaultValue: 'now' }),
+          site: schema.maybe(schema.string()),
           index: schema.string({ defaultValue: DEFAULT_SNMP_INDEX }),
         }),
       },
@@ -33,18 +35,22 @@ export function registerSegmentsRoutes(router: IRouter, logger: Logger) {
         // ── Step 1: discover unique CIDRs from ipAddrTable data ──────────────
         // ip_addr.network is keyword per the index template; no .keyword suffix needed.
         const networksResult = await esClient.search({
-          index, size: 0,
+          index,
+          size: 0,
           query: { bool: { filter: [...baseFilters, { exists: { field: 'ip_addr.network' } }] } },
           aggs: {
             networks: { terms: { field: 'ip_addr.network', size: 5000 } },
           },
         });
 
-        const cidrs: string[] =
-          ((networksResult.aggregations?.networks as any)?.buckets ?? []).map((b: any) => b.key as string);
+        const cidrs: string[] = ((networksResult.aggregations?.networks as any)?.buckets ?? []).map(
+          (b: any) => b.key as string
+        );
 
         if (cidrs.length === 0) {
-          return response.ok({ body: { segments: [], totalDevices: 0, timestamp: new Date().toISOString() } });
+          return response.ok({
+            body: { segments: [], totalDevices: 0, timestamp: new Date().toISOString() },
+          });
         }
 
         // ── Step 2: device names per CIDR via ip_addr.address ────────────────
@@ -57,7 +63,8 @@ export function registerSegmentsRoutes(router: IRouter, logger: Logger) {
         }
 
         const ipAddrResult = await esClient.search({
-          index, size: 0,
+          index,
+          size: 0,
           query: { bool: { filter: [...baseFilters, { exists: { field: 'ip_addr.address' } }] } },
           aggs: {
             by_segment: {
@@ -82,18 +89,24 @@ export function registerSegmentsRoutes(router: IRouter, logger: Logger) {
         }
 
         // ── Step 3: device health for all discovered device names ─────────────
-        const deviceHealthMap = new Map<string, { up: boolean; down: boolean; degraded: boolean }>();
+        const deviceHealthMap = new Map<
+          string,
+          { up: boolean; down: boolean; degraded: boolean }
+        >();
 
         if (allDeviceNames.size > 0) {
           const healthResult = await esClient.search({
-            index, size: 0,
-            query: { bool: { filter: [...baseFilters, { terms: { 'host.name': [...allDeviceNames] } }] } },
+            index,
+            size: 0,
+            query: {
+              bool: { filter: [...baseFilters, { terms: { 'host.name': [...allDeviceNames] } }] },
+            },
             aggs: {
               devices: {
                 terms: { field: 'host.name', size: 5000 },
                 aggs: {
-                  last_seen:    { max: { field: '@timestamp' } },
-                  down_ifaces:  { filter: { term: { 'interface.status.oper': 'down' } } },
+                  last_seen: { max: { field: '@timestamp' } },
+                  down_ifaces: { filter: { term: { 'interface.status.oper': 'down' } } },
                   total_ifaces: { cardinality: { field: 'interface.name' } },
                 },
               },
@@ -103,14 +116,18 @@ export function registerSegmentsRoutes(router: IRouter, logger: Logger) {
           for (const b of (healthResult.aggregations?.devices as any)?.buckets ?? []) {
             const lastSeen: string = b.last_seen?.value_as_string || '';
             const msSince = lastSeen ? Date.now() - new Date(lastSeen).getTime() : Infinity;
-            const nDown: number  = b.down_ifaces?.doc_count || 0;
-            const nTotal: number = b.total_ifaces?.value    || 0;
+            const nDown: number = b.down_ifaces?.doc_count || 0;
+            const nTotal: number = b.total_ifaces?.value || 0;
 
             let st = 'up';
             if (msSince > DEVICE_DOWN_THRESHOLD_MS) st = 'down';
             else if (nTotal > 0 && nDown === nTotal) st = 'degraded';
 
-            deviceHealthMap.set(b.key, { up: st === 'up', down: st === 'down', degraded: st === 'degraded' });
+            deviceHealthMap.set(b.key, {
+              up: st === 'up',
+              down: st === 'down',
+              degraded: st === 'degraded',
+            });
           }
         }
 
@@ -122,7 +139,8 @@ export function registerSegmentsRoutes(router: IRouter, logger: Logger) {
         }
 
         const arpResult = await esClient.search({
-          index, size: 0,
+          index,
+          size: 0,
           query: { bool: { filter: [...baseFilters, { exists: { field: 'arp.ip_addr' } }] } },
           aggs: {
             by_segment: {
@@ -138,13 +156,16 @@ export function registerSegmentsRoutes(router: IRouter, logger: Logger) {
 
         // ── Assemble segment health ────────────────────────────────────────────
         const segments = cidrs
-          .map(cidr => {
+          .map((cidr) => {
             const deviceNames = cidrToDevices.get(cidr) ?? new Set<string>();
-            let deviceCount = 0, upCount = 0, downCount = 0, degradedCount = 0;
+            let deviceCount = 0;
+            let upCount = 0;
+            let downCount = 0;
+            let degradedCount = 0;
 
             for (const name of deviceNames) {
               const h = deviceHealthMap.get(name);
-              if (!h) continue;   // no health data — device not seen in time range
+              if (!h) continue; // no health data — device not seen in time range
               deviceCount++;
               if (h.up) upCount++;
               else if (h.down) downCount++;
@@ -158,7 +179,11 @@ export function registerSegmentsRoutes(router: IRouter, logger: Logger) {
 
             return {
               segment: cidr,
-              deviceCount, upCount, downCount, degradedCount, discoveredCount,
+              deviceCount,
+              upCount,
+              downCount,
+              degradedCount,
+              discoveredCount,
               worstStatus: downCount > 0 ? 'down' : degradedCount > 0 ? 'degraded' : 'up',
             };
           })
@@ -180,7 +205,10 @@ export function registerSegmentsRoutes(router: IRouter, logger: Logger) {
         });
       } catch (err) {
         logger.error(`Segments route error: ${err}`);
-        return response.customError({ statusCode: 500, body: { message: `Failed to fetch segments: ${err}` } });
+        return response.customError({
+          statusCode: 500,
+          body: { message: `Failed to fetch segments: ${err}` },
+        });
       }
     }
   );

@@ -62,4 +62,3 @@ function addHeader(filePath) {
 }
 
 walk(REPO_ROOT);
-

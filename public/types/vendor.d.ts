@@ -25,7 +25,10 @@ declare module 'd3-force' {
     index?: number;
   }
 
-  export interface Simulation<NodeDatum extends SimulationNodeDatum, LinkDatum extends SimulationLinkDatum<NodeDatum> | undefined> {
+  export interface Simulation<
+    NodeDatum extends SimulationNodeDatum,
+    LinkDatum extends SimulationLinkDatum<NodeDatum> | undefined
+  > {
     force(name: string, force?: Force<NodeDatum, LinkDatum> | null): this;
     alphaDecay(decay: number): this;
     alphaTarget(target: number): this;
@@ -35,40 +38,61 @@ declare module 'd3-force' {
     nodes(): NodeDatum[];
   }
 
-  export interface Force<NodeDatum extends SimulationNodeDatum, LinkDatum extends SimulationLinkDatum<NodeDatum> | undefined> {}
+  // eslint-disable-next-line @typescript-eslint/no-empty-interface
+  export interface Force<
+    NodeDatum extends SimulationNodeDatum,
+    LinkDatum extends SimulationLinkDatum<NodeDatum> | undefined
+  > {}
 
-  export interface ForceLink<NodeDatum extends SimulationNodeDatum, LinkDatum extends SimulationLinkDatum<NodeDatum>> extends Force<NodeDatum, LinkDatum> {
+  export interface ForceLink<
+    NodeDatum extends SimulationNodeDatum,
+    LinkDatum extends SimulationLinkDatum<NodeDatum>
+  > extends Force<NodeDatum, LinkDatum> {
     id(fn: (d: NodeDatum) => string): this;
     distance(d: number): this;
     strength(s: number): this;
   }
 
-  export interface ForceManyBody<NodeDatum extends SimulationNodeDatum> extends Force<NodeDatum, undefined> {
+  export interface ForceManyBody<NodeDatum extends SimulationNodeDatum>
+    extends Force<NodeDatum, undefined> {
     strength(s: number): this;
     distanceMax(d: number): this;
   }
 
-  export interface ForceCenter<NodeDatum extends SimulationNodeDatum> extends Force<NodeDatum, undefined> {}
+  export type ForceCenter<NodeDatum extends SimulationNodeDatum> = Force<NodeDatum, undefined>;
 
-  export interface ForceCollide<NodeDatum extends SimulationNodeDatum> extends Force<NodeDatum, undefined> {
+  export interface ForceCollide<NodeDatum extends SimulationNodeDatum>
+    extends Force<NodeDatum, undefined> {
     radius(r: number): this;
   }
 
-  export interface ForceX<NodeDatum extends SimulationNodeDatum> extends Force<NodeDatum, undefined> {
+  export interface ForceX<NodeDatum extends SimulationNodeDatum>
+    extends Force<NodeDatum, undefined> {
     strength(s: number | ((d: NodeDatum) => number)): this;
     x(x: number | ((d: NodeDatum) => number)): this;
   }
 
-  export interface ForceY<NodeDatum extends SimulationNodeDatum> extends Force<NodeDatum, undefined> {
+  export interface ForceY<NodeDatum extends SimulationNodeDatum>
+    extends Force<NodeDatum, undefined> {
     strength(s: number | ((d: NodeDatum) => number)): this;
     y(y: number | ((d: NodeDatum) => number)): this;
   }
 
-  export function forceSimulation<NodeDatum extends SimulationNodeDatum>(nodes?: NodeDatum[]): Simulation<NodeDatum, undefined>;
-  export function forceLink<NodeDatum extends SimulationNodeDatum, LinkDatum extends SimulationLinkDatum<NodeDatum>>(links?: LinkDatum[]): ForceLink<NodeDatum, LinkDatum>;
+  export function forceSimulation<NodeDatum extends SimulationNodeDatum>(
+    nodes?: NodeDatum[]
+  ): Simulation<NodeDatum, undefined>;
+  export function forceLink<
+    NodeDatum extends SimulationNodeDatum,
+    LinkDatum extends SimulationLinkDatum<NodeDatum>
+  >(links?: LinkDatum[]): ForceLink<NodeDatum, LinkDatum>;
   export function forceManyBody<NodeDatum extends SimulationNodeDatum>(): ForceManyBody<NodeDatum>;
-  export function forceCenter<NodeDatum extends SimulationNodeDatum>(x?: number, y?: number): ForceCenter<NodeDatum>;
-  export function forceCollide<NodeDatum extends SimulationNodeDatum>(radius?: number): ForceCollide<NodeDatum>;
+  export function forceCenter<NodeDatum extends SimulationNodeDatum>(
+    x?: number,
+    y?: number
+  ): ForceCenter<NodeDatum>;
+  export function forceCollide<NodeDatum extends SimulationNodeDatum>(
+    radius?: number
+  ): ForceCollide<NodeDatum>;
   export function forceX<NodeDatum extends SimulationNodeDatum>(x?: number): ForceX<NodeDatum>;
   export function forceY<NodeDatum extends SimulationNodeDatum>(y?: number): ForceY<NodeDatum>;
 }

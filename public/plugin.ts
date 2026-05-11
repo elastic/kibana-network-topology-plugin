@@ -6,7 +6,11 @@
  */
 
 import type {
-  CoreSetup, CoreStart, Plugin, AppMountParameters, PluginInitializerContext,
+  CoreSetup,
+  CoreStart,
+  Plugin,
+  AppMountParameters,
+  PluginInitializerContext,
 } from '@kbn/core/public';
 import type { DataPublicPluginStart } from '@kbn/data-plugin/public';
 import type { UnifiedSearchPublicPluginStart } from '@kbn/unified-search-plugin/public';

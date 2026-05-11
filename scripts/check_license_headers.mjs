@@ -68,4 +68,3 @@ if (failures.length) {
 }
 
 process.stdout.write('All checked files have the correct license header.\n');
-
