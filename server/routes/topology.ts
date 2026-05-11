@@ -32,7 +32,14 @@ export function registerTopologyRoutes(router: IRouter, logger: Logger) {
         const esClient = (await context.core).elasticsearch.client.asCurrentUser;
 
         const graph = await buildTopologyFromArpMac(esClient, {
-          index, from, to, site, building, role, cidr, logger,
+          index,
+          from,
+          to,
+          site,
+          building,
+          role,
+          cidr,
+          logger,
         });
 
         return response.ok({

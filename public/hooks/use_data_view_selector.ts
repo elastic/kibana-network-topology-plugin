@@ -36,14 +36,19 @@ export function useDataViewSelector() {
     }
 
     init();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [dataViews]);
 
   // Called by the DataViewPicker when the user selects a different data view
-  const onChangeDataView = useCallback(async (newId: string) => {
-    const dv = await dataViews.get(newId);
-    setSelectedDataView(dv);
-  }, [dataViews]);
+  const onChangeDataView = useCallback(
+    async (newId: string) => {
+      const dv = await dataViews.get(newId);
+      setSelectedDataView(dv);
+    },
+    [dataViews]
+  );
 
   return { selectedDataView, savedDataViews, onChangeDataView };
 }

@@ -7,8 +7,17 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  EuiFlexGroup, EuiFlexItem, EuiPanel, EuiTitle, EuiText,
-  EuiHealth, EuiLoadingSpinner, EuiCallOut, EuiSpacer, EuiIcon, EuiBadge,
+  EuiFlexGroup,
+  EuiFlexItem,
+  EuiPanel,
+  EuiTitle,
+  EuiText,
+  EuiHealth,
+  EuiLoadingSpinner,
+  EuiCallOut,
+  EuiSpacer,
+  EuiIcon,
+  EuiBadge,
 } from '@elastic/eui';
 import { useApi } from '../hooks/use_api';
 import type { SegmentHealth } from '../../common';
@@ -30,33 +39,77 @@ export const SegmentOverview: React.FC<Props> = ({ onSegmentClick, from, to, ref
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    api.fetchSegments({ from, to })
-      .then((r) => { if (!cancelled) { setSegments(r.segments); setLoading(false); } })
-      .catch((e) => { if (!cancelled) { setError(e.message); setLoading(false); } });
-    return () => { cancelled = true; };
+    api
+      .fetchSegments({ from, to })
+      .then((r) => {
+        if (!cancelled) {
+          setSegments(r.segments);
+          setLoading(false);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setError(e.message);
+          setLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [api, from, to, refreshKey]);
 
-  if (loading) return <EuiFlexGroup justifyContent="center" style={{ minHeight: 120 }}><EuiFlexItem grow={false}><EuiLoadingSpinner size="l" /></EuiFlexItem></EuiFlexGroup>;
-  if (error) return <EuiCallOut title="Error loading segments" color="danger"><p>{error}</p></EuiCallOut>;
-  if (segments.length === 0) return <EuiText size="s" color="subdued"><p>No network segments detected in the selected time range.</p></EuiText>;
+  if (loading)
+    return (
+      <EuiFlexGroup justifyContent="center" style={{ minHeight: 120 }}>
+        <EuiFlexItem grow={false}>
+          <EuiLoadingSpinner size="l" />
+        </EuiFlexItem>
+      </EuiFlexGroup>
+    );
+  if (error)
+    return (
+      <EuiCallOut title="Error loading segments" color="danger">
+        <p>{error}</p>
+      </EuiCallOut>
+    );
+  if (segments.length === 0)
+    return (
+      <EuiText size="s" color="subdued">
+        <p>No network segments detected in the selected time range.</p>
+      </EuiText>
+    );
 
   return (
     <EuiFlexGroup wrap gutterSize="l">
       {segments.map((seg) => (
         <EuiFlexItem key={seg.segment} style={{ minWidth: 260, maxWidth: 340 }}>
-          <EuiPanel hasBorder hasShadow={false} paddingSize="l" onClick={() => onSegmentClick(seg.segment)} style={{ cursor: 'pointer' }}>
+          <EuiPanel
+            hasBorder
+            hasShadow={false}
+            paddingSize="l"
+            onClick={() => onSegmentClick(seg.segment)}
+            style={{ cursor: 'pointer' }}
+          >
             <EuiFlexGroup alignItems="center" gutterSize="s">
               <EuiFlexItem grow={false}>
-                <EuiIcon type="globe" size="l" color={STATUS_EUI_COLORS[seg.worstStatus] || 'subdued'} />
+                <EuiIcon
+                  type="globe"
+                  size="l"
+                  color={STATUS_EUI_COLORS[seg.worstStatus] || 'subdued'}
+                />
               </EuiFlexItem>
               <EuiFlexItem>
-                <EuiTitle size="s"><h3 style={{ fontFamily: 'monospace' }}>{seg.segment}</h3></EuiTitle>
+                <EuiTitle size="s">
+                  <h3 style={{ fontFamily: 'monospace' }}>{seg.segment}</h3>
+                </EuiTitle>
               </EuiFlexItem>
             </EuiFlexGroup>
             <EuiSpacer size="m" />
             <EuiFlexGroup gutterSize="s" alignItems="center">
               <EuiFlexItem grow={false}>
-                <EuiText size="s"><strong>{seg.deviceCount}</strong> polled</EuiText>
+                <EuiText size="s">
+                  <strong>{seg.deviceCount}</strong> polled
+                </EuiText>
               </EuiFlexItem>
               {seg.discoveredCount > 0 && (
                 <EuiFlexItem grow={false}>
@@ -66,9 +119,19 @@ export const SegmentOverview: React.FC<Props> = ({ onSegmentClick, from, to, ref
             </EuiFlexGroup>
             <EuiSpacer size="s" />
             <EuiFlexGroup gutterSize="m">
-              <EuiFlexItem grow={false}><EuiHealth color="success">{seg.upCount} up</EuiHealth></EuiFlexItem>
-              {seg.degradedCount > 0 && <EuiFlexItem grow={false}><EuiHealth color="warning">{seg.degradedCount} degraded</EuiHealth></EuiFlexItem>}
-              {seg.downCount > 0 && <EuiFlexItem grow={false}><EuiHealth color="danger">{seg.downCount} down</EuiHealth></EuiFlexItem>}
+              <EuiFlexItem grow={false}>
+                <EuiHealth color="success">{seg.upCount} up</EuiHealth>
+              </EuiFlexItem>
+              {seg.degradedCount > 0 && (
+                <EuiFlexItem grow={false}>
+                  <EuiHealth color="warning">{seg.degradedCount} degraded</EuiHealth>
+                </EuiFlexItem>
+              )}
+              {seg.downCount > 0 && (
+                <EuiFlexItem grow={false}>
+                  <EuiHealth color="danger">{seg.downCount} down</EuiHealth>
+                </EuiFlexItem>
+              )}
             </EuiFlexGroup>
           </EuiPanel>
         </EuiFlexItem>

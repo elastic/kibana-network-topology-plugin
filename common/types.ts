@@ -155,5 +155,12 @@ export interface SetupHealthResponse {
   indexTemplate: { installed: boolean };
   ingestPipeline: { installed: boolean };
   recentData: { hasData: boolean; deviceCount: number; siteCount: number };
-  fieldCoverage: { interfaces: boolean; arpTable: boolean; macTable: boolean; ipAddrTable: boolean; bgpPeers: boolean; ospfNeighbors: boolean };
+  fieldCoverage: {
+    interfaces: boolean;
+    arpTable: boolean;
+    macTable: boolean;
+    ipAddrTable: boolean;
+    bgpPeers: boolean;
+    ospfNeighbors: boolean;
+  };
 }
