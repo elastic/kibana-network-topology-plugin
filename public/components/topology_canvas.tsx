@@ -37,6 +37,10 @@ const R = 20;
 const MIN_H_SPACING = 100; // horizontal
 const MIN_V_SPACING = 120; // vertical (row-to-row)
 const MAX_ROW_WIDTH = 12; // max nodes per row before wrapping within the same tier
+// Overlay (pulsing unhealthy elements) is throttled to 24 fps. Pulse period is ~2 s,
+// so sub-1% change per frame at 24 fps — visually indistinguishable from native rate.
+const OVERLAY_FPS = 24;
+const FRAME_INTERVAL_MS = 1000 / OVERLAY_FPS;
 
 // Logical topology layout arranged top→bottom:
 //   Top:    External BGP peers (unmanaged nodes with BGP links — transit providers, upstream ASes)
@@ -129,6 +133,18 @@ function computeLayout(
   return positions;
 }
 
+// Configures a canvas's backing store to match its CSS size at the device pixel ratio,
+// and applies a matching context scale so drawing code can stay in CSS-pixel coordinates.
+// Setting canvas.width / .height resets context state — that's why ctx.scale is bundled
+// here so it cannot be forgotten on resize.
+function setupCanvas(c: HTMLCanvasElement, w: number, h: number, dpr: number) {
+  c.width = w * dpr;
+  c.height = h * dpr;
+  const ctx = c.getContext('2d')!;
+  ctx.scale(dpr, dpr);
+  return ctx;
+}
+
 export const TopologyCanvas: React.FC<Props> = ({
   graph,
   width,
@@ -137,10 +153,15 @@ export const TopologyCanvas: React.FC<Props> = ({
   selectedNodeId,
   hiddenTypes,
 }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Two stacked canvases. Base holds static content (healthy strokes, fills, glyphs, labels);
+  // overlay holds pulsing/selected strokes + tooltip. Mouse events live on the base canvas;
+  // the overlay is pointer-events: none so events fall through.
+  const baseRef = useRef<HTMLCanvasElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
   // Stores positions the operator has manually dragged — survive data refreshes
   const dragOverridesRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const selectedNodeRef = useRef<string | null>(selectedNodeId);
+  // Redraws both layers; used by the selection-only effect and as the "redraw everything" entry point.
   const drawRef = useRef<(() => void) | null>(null);
   // Persists zoom/pan across data refreshes so the canvas doesn't reset on each poll
   const transformRef = useRef<ZoomTransform | null>(null);
@@ -156,16 +177,14 @@ export const TopologyCanvas: React.FC<Props> = ({
   }, [selectedNodeId]);
 
   useEffect(() => {
-    if (!canvasRef.current || !graph.nodes.length) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const baseCanvas = baseRef.current;
+    const overlayCanvas = overlayRef.current;
+    if (!baseCanvas || !overlayCanvas || !graph.nodes.length) return;
 
+    // Single dpr literal, same w/h, same helper → both backing stores identically sized + scaled.
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    canvas.style.height = `${height}px`;
-    ctx.scale(dpr, dpr);
+    const baseCtx = setupCanvas(baseCanvas, width, height, dpr);
+    const overlayCtx = setupCanvas(overlayCanvas, width, height, dpr);
 
     // Filter nodes and links by current visibility toggles
     // Step 1: remove nodes whose type is toggled off
@@ -214,6 +233,11 @@ export const TopologyCanvas: React.FC<Props> = ({
       })
       .filter((l): l is PlacedLink => l !== null);
 
+    // Drives whether the overlay rAF loop runs at all. Healthy graph → no per-frame cost.
+    const anyUnhealthy =
+      nodes.some((n) => n.status === 'down' || n.status === 'degraded') ||
+      links.some((l) => l.status !== 'up');
+
     // Recompute zoom-to-fit when canvas dimensions change (e.g. window resize);
     // reuse saved transform only when the same dimensions re-render (data refresh).
     const dimKey = `${width}x${height}:${hiddenTypesKey}`;
@@ -247,6 +271,12 @@ export const TopologyCanvas: React.FC<Props> = ({
     let dragStartY = 0;
     const DRAG_THRESHOLD = 25; // px² — 5px movement before a click becomes a drag
 
+    // Shared by both draws — guarantees identical CTM on both contexts since ZoomTransform is immutable.
+    function applyTransform(ctx: CanvasRenderingContext2D) {
+      ctx.translate(transform.x, transform.y);
+      ctx.scale(transform.k, transform.k);
+    }
+
     function nodeAt(px: number, py: number): PlacedNode | null {
       const x = (px - transform.x) / transform.k;
       const y = (py - transform.y) / transform.k;
@@ -259,41 +289,38 @@ export const TopologyCanvas: React.FC<Props> = ({
       );
     }
 
-    function draw() {
-      ctx!.save();
-      ctx!.clearRect(0, 0, width, height);
-      ctx!.translate(transform.x, transform.y);
-      ctx!.scale(transform.k, transform.k);
-
-      // Pulse phase: 0→1 sinusoidal oscillation (~2s cycle) for unhealthy elements.
-      // Provides a motion cue so status is perceivable without relying on color alone.
-      const pulse = (Math.sin((performance.now() / 1000) * 3) + 1) / 2;
+    // Static content: healthy links, all node fills + glyphs + labels, healthy node strokes.
+    // Only repaints on layout / zoom / pan / hovered-node-change / selection-change.
+    function drawBase() {
+      baseCtx.save();
+      baseCtx.clearRect(0, 0, width, height);
+      applyTransform(baseCtx);
 
       for (const link of links) {
+        if (link.status !== 'up') continue;
         const { source: s, target: t } = link;
-        const bad = link.status !== 'up';
-        ctx!.beginPath();
-        ctx!.moveTo(s.x, s.y);
-        ctx!.lineTo(t.x, t.y);
+        baseCtx.beginPath();
+        baseCtx.moveTo(s.x, s.y);
+        baseCtx.lineTo(t.x, t.y);
         if (link.method === 'bgp') {
-          ctx!.strokeStyle = link.status === 'up' ? '#0077CC' : '#BD271E';
-          ctx!.globalAlpha = bad ? 0.4 + pulse * 0.5 : 0.7;
-          ctx!.lineWidth = bad ? 3 + pulse * 2 : 3;
-          ctx!.setLineDash(link.status === 'down' ? [4, 4] : [8, 3, 2, 3]);
+          baseCtx.strokeStyle = '#0077CC';
+          baseCtx.globalAlpha = 0.7;
+          baseCtx.lineWidth = 3;
+          baseCtx.setLineDash([8, 3, 2, 3]);
         } else if (link.method === 'ospf') {
-          ctx!.strokeStyle = link.status === 'up' ? '#54B399' : '#BD271E';
-          ctx!.globalAlpha = bad ? 0.4 + pulse * 0.5 : 0.7;
-          ctx!.lineWidth = bad ? 3 + pulse * 2 : 3;
-          ctx!.setLineDash(link.status === 'down' ? [4, 4] : [10, 4]);
+          baseCtx.strokeStyle = '#54B399';
+          baseCtx.globalAlpha = 0.7;
+          baseCtx.lineWidth = 3;
+          baseCtx.setLineDash([10, 4]);
         } else {
-          ctx!.strokeStyle = STATUS_COLORS[link.status] || '#98A2B3';
-          ctx!.globalAlpha = bad ? 0.3 + pulse * 0.4 : 0.6;
-          ctx!.lineWidth = bad ? 2 + pulse * 1.5 : 2.5;
-          ctx!.setLineDash(link.status === 'down' ? [4, 4] : []);
+          baseCtx.strokeStyle = STATUS_COLORS[link.status] || '#98A2B3';
+          baseCtx.globalAlpha = 0.6;
+          baseCtx.lineWidth = 2.5;
+          baseCtx.setLineDash([]);
         }
-        ctx!.stroke();
-        ctx!.globalAlpha = 1;
-        ctx!.setLineDash([]);
+        baseCtx.stroke();
+        baseCtx.globalAlpha = 1;
+        baseCtx.setLineDash([]);
       }
 
       for (const node of nodes) {
@@ -303,61 +330,123 @@ export const TopologyCanvas: React.FC<Props> = ({
         const unmanaged = node.managed === false;
         const nodeBad = node.status === 'down' || node.status === 'degraded';
 
-        ctx!.beginPath();
-        ctx!.arc(node.x, node.y, R, 0, 2 * Math.PI);
-        ctx!.fillStyle = unmanaged ? '#4A4B52' : cfg.color;
-        ctx!.globalAlpha = unmanaged ? 0.4 : hov || sel ? 1 : 0.85;
-        ctx!.fill();
-        if (unmanaged) ctx!.setLineDash([4, 3]);
-        ctx!.strokeStyle = sel ? '#FFF' : STATUS_COLORS[node.status] || '#98A2B3';
-        ctx!.lineWidth = sel ? 4 : nodeBad ? 3 + pulse * 2 : 3;
-        if (nodeBad && !sel) ctx!.globalAlpha = 0.6 + pulse * 0.4;
-        ctx!.stroke();
-        ctx!.setLineDash([]);
-        ctx!.globalAlpha = 1;
+        baseCtx.beginPath();
+        baseCtx.arc(node.x, node.y, R, 0, 2 * Math.PI);
+        baseCtx.fillStyle = unmanaged ? '#4A4B52' : cfg.color;
+        baseCtx.globalAlpha = unmanaged ? 0.4 : hov || sel ? 1 : 0.85;
+        baseCtx.fill();
+        baseCtx.globalAlpha = 1;
 
-        if (sel) {
-          ctx!.beginPath();
-          ctx!.arc(node.x, node.y, R + 5, 0, 2 * Math.PI);
-          ctx!.strokeStyle = cfg.color;
-          ctx!.lineWidth = 2;
-          ctx!.globalAlpha = 0.5;
-          ctx!.stroke();
-          ctx!.globalAlpha = 1;
+        // Healthy + non-selected strokes are static — go on base.
+        // Pulsing (unhealthy) and selected strokes live on the overlay.
+        if (!nodeBad && !sel) {
+          if (unmanaged) baseCtx.setLineDash([4, 3]);
+          baseCtx.strokeStyle = STATUS_COLORS[node.status] || '#98A2B3';
+          baseCtx.lineWidth = 3;
+          baseCtx.stroke();
+          baseCtx.setLineDash([]);
         }
 
-        ctx!.fillStyle = '#FFF';
-        ctx!.font = 'bold 14px sans-serif';
-        ctx!.textAlign = 'center';
-        ctx!.textBaseline = 'middle';
-        ctx!.fillText(unmanaged ? '?' : node.type.charAt(0).toUpperCase(), node.x, node.y);
+        baseCtx.fillStyle = '#FFF';
+        baseCtx.font = 'bold 14px sans-serif';
+        baseCtx.textAlign = 'center';
+        baseCtx.textBaseline = 'middle';
+        baseCtx.fillText(unmanaged ? '?' : node.type.charAt(0).toUpperCase(), node.x, node.y);
 
         if (transform.k > 0.5) {
-          // Measure label dimensions to draw a background pill behind the text
-          ctx!.font = '11px sans-serif';
-          const labelW = ctx!.measureText(node.label).width;
+          baseCtx.font = '11px sans-serif';
+          const labelW = baseCtx.measureText(node.label).width;
           const showIp = transform.k > 0.8 && !!node.ip;
-          ctx!.font = '9px sans-serif';
-          const ipW = showIp ? ctx!.measureText(node.ip!).width : 0;
+          baseCtx.font = '9px sans-serif';
+          const ipW = showIp ? baseCtx.measureText(node.ip!).width : 0;
           const boxW = Math.max(labelW, ipW) + 10;
           const boxH = showIp ? 30 : 16;
           const boxX = node.x - boxW / 2;
           const boxY = node.y + 24;
 
-          ctx!.fillStyle = 'rgba(29, 30, 36, 0.75)';
-          roundRect(ctx!, boxX, boxY, boxW, boxH, 4);
-          ctx!.fill();
+          baseCtx.fillStyle = 'rgba(29, 30, 36, 0.75)';
+          roundRect(baseCtx, boxX, boxY, boxW, boxH, 4);
+          baseCtx.fill();
 
-          ctx!.fillStyle = hov || sel ? '#FFF' : '#B0B0B0';
-          ctx!.font = '11px sans-serif';
-          ctx!.textAlign = 'center';
-          ctx!.textBaseline = 'top';
-          ctx!.fillText(node.label, node.x, boxY + 2);
+          baseCtx.fillStyle = hov || sel ? '#FFF' : '#B0B0B0';
+          baseCtx.font = '11px sans-serif';
+          baseCtx.textAlign = 'center';
+          baseCtx.textBaseline = 'top';
+          baseCtx.fillText(node.label, node.x, boxY + 2);
           if (showIp) {
-            ctx!.fillStyle = '#808080';
-            ctx!.font = '9px sans-serif';
-            ctx!.fillText(node.ip!, node.x, boxY + 16);
+            baseCtx.fillStyle = '#808080';
+            baseCtx.font = '9px sans-serif';
+            baseCtx.fillText(node.ip!, node.x, boxY + 16);
           }
+        }
+      }
+      baseCtx.restore();
+    }
+
+    // Dynamic content: unhealthy strokes (pulsing), selection ring, hover tooltip.
+    // rAF-driven when anyUnhealthy; otherwise only repainted on event.
+    function drawOverlay() {
+      overlayCtx.save();
+      overlayCtx.clearRect(0, 0, width, height);
+      applyTransform(overlayCtx);
+
+      // Pulse phase: 0→1 sinusoidal oscillation (~2s cycle) for unhealthy elements.
+      // Provides a motion cue so status is perceivable without relying on color alone.
+      const pulse = (Math.sin((performance.now() / 1000) * 3) + 1) / 2;
+
+      for (const link of links) {
+        if (link.status === 'up') continue;
+        const { source: s, target: t } = link;
+        overlayCtx.beginPath();
+        overlayCtx.moveTo(s.x, s.y);
+        overlayCtx.lineTo(t.x, t.y);
+        if (link.method === 'bgp') {
+          overlayCtx.strokeStyle = '#BD271E';
+          overlayCtx.globalAlpha = 0.4 + pulse * 0.5;
+          overlayCtx.lineWidth = 3 + pulse * 2;
+          overlayCtx.setLineDash(link.status === 'down' ? [4, 4] : [8, 3, 2, 3]);
+        } else if (link.method === 'ospf') {
+          overlayCtx.strokeStyle = '#BD271E';
+          overlayCtx.globalAlpha = 0.4 + pulse * 0.5;
+          overlayCtx.lineWidth = 3 + pulse * 2;
+          overlayCtx.setLineDash(link.status === 'down' ? [4, 4] : [10, 4]);
+        } else {
+          overlayCtx.strokeStyle = STATUS_COLORS[link.status] || '#98A2B3';
+          overlayCtx.globalAlpha = 0.3 + pulse * 0.4;
+          overlayCtx.lineWidth = 2 + pulse * 1.5;
+          overlayCtx.setLineDash(link.status === 'down' ? [4, 4] : []);
+        }
+        overlayCtx.stroke();
+        overlayCtx.globalAlpha = 1;
+        overlayCtx.setLineDash([]);
+      }
+
+      for (const node of nodes) {
+        const sel = node.id === selectedNodeRef.current;
+        const nodeBad = node.status === 'down' || node.status === 'degraded';
+        if (!nodeBad && !sel) continue;
+
+        const cfg = DEVICE_TYPE_CONFIG[node.type] || DEVICE_TYPE_CONFIG.unknown;
+        const unmanaged = node.managed === false;
+
+        overlayCtx.beginPath();
+        overlayCtx.arc(node.x, node.y, R, 0, 2 * Math.PI);
+        if (unmanaged) overlayCtx.setLineDash([4, 3]);
+        overlayCtx.strokeStyle = sel ? '#FFF' : STATUS_COLORS[node.status] || '#98A2B3';
+        overlayCtx.lineWidth = sel ? 4 : 3 + pulse * 2;
+        if (nodeBad && !sel) overlayCtx.globalAlpha = 0.6 + pulse * 0.4;
+        overlayCtx.stroke();
+        overlayCtx.setLineDash([]);
+        overlayCtx.globalAlpha = 1;
+
+        if (sel) {
+          overlayCtx.beginPath();
+          overlayCtx.arc(node.x, node.y, R + 5, 0, 2 * Math.PI);
+          overlayCtx.strokeStyle = cfg.color;
+          overlayCtx.lineWidth = 2;
+          overlayCtx.globalAlpha = 0.5;
+          overlayCtx.stroke();
+          overlayCtx.globalAlpha = 1;
         }
       }
 
@@ -385,32 +474,43 @@ export const TopologyCanvas: React.FC<Props> = ({
               : 'Unmanaged (ARP-discovered)'
           );
         }
-        ctx!.fillStyle = 'rgba(30,30,30,0.92)';
-        ctx!.strokeStyle = 'rgba(255,255,255,0.15)';
-        ctx!.lineWidth = 1;
-        roundRect(ctx!, tx, ty, 160, lines.length * 16 + 16, 6);
-        ctx!.fill();
-        ctx!.stroke();
-        ctx!.fillStyle = '#FFF';
-        ctx!.textAlign = 'left';
-        ctx!.textBaseline = 'top';
+        overlayCtx.fillStyle = 'rgba(30,30,30,0.92)';
+        overlayCtx.strokeStyle = 'rgba(255,255,255,0.15)';
+        overlayCtx.lineWidth = 1;
+        roundRect(overlayCtx, tx, ty, 160, lines.length * 16 + 16, 6);
+        overlayCtx.fill();
+        overlayCtx.stroke();
+        overlayCtx.fillStyle = '#FFF';
+        overlayCtx.textAlign = 'left';
+        overlayCtx.textBaseline = 'top';
         lines.forEach((l, i) => {
-          ctx!.font = i === 0 ? 'bold 12px sans-serif' : '11px sans-serif';
-          ctx!.fillText(l, tx + 8, ty + 8 + i * 16);
+          overlayCtx.font = i === 0 ? 'bold 12px sans-serif' : '11px sans-serif';
+          overlayCtx.fillText(l, tx + 8, ty + 8 + i * 16);
         });
       }
-      ctx!.restore();
+      overlayCtx.restore();
     }
 
-    drawRef.current = draw;
+    drawRef.current = () => {
+      drawBase();
+      drawOverlay();
+    };
+    drawRef.current();
 
-    // Continuous animation loop — drives the pulse effect on unhealthy elements
-    let animFrame: number;
-    function animate() {
-      draw();
+    // rAF gating + 24 fps throttle. rAF keeps firing at the display's native rate (60/120 Hz),
+    // but drawOverlay only runs when FRAME_INTERVAL_MS has elapsed. Skipped entirely when nothing pulses.
+    let animFrame: number | null = null;
+    let lastOverlayDraw = 0;
+    if (anyUnhealthy) {
+      const animate = (now: number) => {
+        if (now - lastOverlayDraw >= FRAME_INTERVAL_MS) {
+          drawOverlay();
+          lastOverlayDraw = now;
+        }
+        animFrame = requestAnimationFrame(animate);
+      };
       animFrame = requestAnimationFrame(animate);
     }
-    animFrame = requestAnimationFrame(animate);
 
     // Zoom: disable pan when pressing down on a node so drag and pan don't compete
     const zoomBehavior = zoom<HTMLCanvasElement, unknown>()
@@ -419,7 +519,7 @@ export const TopologyCanvas: React.FC<Props> = ({
         if (event.type === 'wheel') return true;
         if (event.type === 'mousedown') {
           const me = event as MouseEvent;
-          const r = canvas.getBoundingClientRect();
+          const r = baseCanvas.getBoundingClientRect();
           return !nodeAt(me.clientX - r.left, me.clientY - r.top);
         }
         return true;
@@ -427,13 +527,14 @@ export const TopologyCanvas: React.FC<Props> = ({
       .on('zoom', (e: { transform: ZoomTransform }) => {
         transform = e.transform;
         transformRef.current = e.transform;
-        draw();
+        drawBase();
+        drawOverlay();
       });
-    select(canvas).call(zoomBehavior);
-    select(canvas).call(zoomBehavior.transform, transform);
+    select(baseCanvas).call(zoomBehavior);
+    select(baseCanvas).call(zoomBehavior.transform, transform);
 
-    canvas.addEventListener('mousemove', (e) => {
-      const r = canvas.getBoundingClientRect();
+    const onMouseMove = (e: MouseEvent) => {
+      const r = baseCanvas.getBoundingClientRect();
       const px = e.clientX - r.left;
       const py = e.clientY - r.top;
       if (dragged) {
@@ -441,22 +542,35 @@ export const TopologyCanvas: React.FC<Props> = ({
         const dy = py - dragStartY;
         if (!dragMoved && dx * dx + dy * dy < DRAG_THRESHOLD) {
           // Below threshold — treat as a pending click, not a drag yet
-          hovered = dragged;
-          canvas.style.cursor = 'pointer';
-          draw();
+          baseCanvas.style.cursor = 'pointer';
+          if (hovered !== dragged) {
+            hovered = dragged;
+            drawBase();
+            drawOverlay();
+          }
           return;
         }
         dragged.x = (px - transform.x) / transform.k;
         dragged.y = (py - transform.y) / transform.k;
         dragMoved = true;
+        hovered = dragged;
+        baseCanvas.style.cursor = 'grabbing';
+        drawBase();
+        drawOverlay();
+        return;
       }
-      hovered = dragged ?? nodeAt(px, py);
-      canvas.style.cursor = dragged ? 'grabbing' : hovered ? 'pointer' : 'grab';
-      draw();
-    });
+      // Memoize the hovered node — avoid full redraw on per-pixel mouse moves that don't change identity.
+      const newHovered = nodeAt(px, py);
+      baseCanvas.style.cursor = newHovered ? 'pointer' : 'grab';
+      if (newHovered !== hovered) {
+        hovered = newHovered;
+        drawBase();
+        drawOverlay();
+      }
+    };
 
-    canvas.addEventListener('mousedown', (e) => {
-      const r = canvas.getBoundingClientRect();
+    const onMouseDown = (e: MouseEvent) => {
+      const r = baseCanvas.getBoundingClientRect();
       const px = e.clientX - r.left;
       const py = e.clientY - r.top;
       const n = nodeAt(px, py);
@@ -466,38 +580,78 @@ export const TopologyCanvas: React.FC<Props> = ({
         dragStartX = px;
         dragStartY = py;
       }
-    });
+    };
 
-    canvas.addEventListener('mouseup', () => {
+    const onMouseUp = () => {
       if (dragged) {
         if (dragMoved) dragOverridesRef.current.set(dragged.id, { x: dragged.x, y: dragged.y });
         dragged = null;
       }
-    });
+    };
 
-    canvas.addEventListener('click', (e) => {
+    const onClick = (e: MouseEvent) => {
       if (dragMoved) {
         dragMoved = false;
         return;
       } // suppress click after drag
-      const r = canvas.getBoundingClientRect();
+      const r = baseCanvas.getBoundingClientRect();
       const n = nodeAt(e.clientX - r.left, e.clientY - r.top);
       if (n) onNodeClick(n.id);
-    });
+    };
+
+    baseCanvas.addEventListener('mousemove', onMouseMove);
+    baseCanvas.addEventListener('mousedown', onMouseDown);
+    baseCanvas.addEventListener('mouseup', onMouseUp);
+    baseCanvas.addEventListener('click', onClick);
 
     return () => {
       drawRef.current = null;
-      cancelAnimationFrame(animFrame);
+      if (animFrame !== null) cancelAnimationFrame(animFrame);
+      baseCanvas.removeEventListener('mousemove', onMouseMove);
+      baseCanvas.removeEventListener('mousedown', onMouseDown);
+      baseCanvas.removeEventListener('mouseup', onMouseUp);
+      baseCanvas.removeEventListener('click', onClick);
+      // Clear d3-zoom listeners (wheel/mousedown/touchstart) installed via select(baseCanvas).call(zoomBehavior).
+      // Without this, each re-render layers another zoom behavior on the canvas.
+      select(baseCanvas).on('.zoom', null);
     };
     // TODO: Revisit wether hiddenTypes should also be part of the deps array
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph, width, height, onNodeClick, hiddenTypesKey]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={{ display: 'block', width: '100%', height: `${height}px`, background: '#1D1E24' }}
-    />
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: `${height}px`,
+        background: '#1D1E24',
+      }}
+    >
+      <canvas
+        ref={baseRef}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          display: 'block',
+          width: '100%',
+          height: `${height}px`,
+        }}
+      />
+      <canvas
+        ref={overlayRef}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          display: 'block',
+          width: '100%',
+          height: `${height}px`,
+          pointerEvents: 'none',
+        }}
+      />
+    </div>
   );
 };
 
