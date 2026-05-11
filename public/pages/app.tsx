@@ -88,7 +88,7 @@ export const NetworkTopologyApp: React.FC = () => {
               <EuiFlexItem grow={false}>
                 <EuiTitle size="l">
                   <h1>
-                    Network Topology &nbsp;
+                    Network Topology CLA Test&nbsp;
                     <EuiBetaBadge
                       label="Technical preview"
                       tooltipContent="This functionality is in technical preview and is not ready for production usage. Technical preview features may change or be removed at any time. Elastic will work to fix any issues, but features in technical preview are not subject to the support SLA of official GA features. Specific Support terms apply."
