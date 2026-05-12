@@ -220,6 +220,13 @@ export const TopologyCanvas: React.FC<Props> = ({
       return { ...n, x: override?.x ?? grid.x, y: override?.y ?? grid.y };
     });
 
+    const buildTree = () =>
+      quadtree<PlacedNode>()
+        .x((d) => d.x)
+        .y((d) => d.y)
+        .addAll(nodes);
+    let tree = buildTree();
+
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
     const links: PlacedLink[] = visibleLinks
       .map((l) => {
@@ -277,13 +284,7 @@ export const TopologyCanvas: React.FC<Props> = ({
     function nodeAt(px: number, py: number): PlacedNode | null {
       const x = (px - transform.x) / transform.k;
       const y = (py - transform.y) / transform.k;
-      return (
-        quadtree<PlacedNode>()
-          .x((d) => d.x)
-          .y((d) => d.y)
-          .addAll(nodes)
-          .find(x, y, R + 5) ?? null
-      );
+      return tree.find(x, y, R + 5) ?? null;
     }
 
     // Static content: healthy links, all node fills + glyphs + labels, healthy node strokes.
@@ -581,7 +582,10 @@ export const TopologyCanvas: React.FC<Props> = ({
 
     const onMouseUp = () => {
       if (dragged) {
-        if (dragMoved) dragOverridesRef.current.set(dragged.id, { x: dragged.x, y: dragged.y });
+        if (dragMoved) {
+          dragOverridesRef.current.set(dragged.id, { x: dragged.x, y: dragged.y });
+          tree = buildTree();
+        }
         dragged = null;
       }
     };
