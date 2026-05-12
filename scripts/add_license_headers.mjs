@@ -13,14 +13,14 @@
 
 import fs from 'fs';
 import path from 'path';
-
-const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
-
-const HEADER_PATH = path.join(REPO_ROOT, 'licenses', 'ELASTIC-LICENSE-2.0-HEADER.txt');
-const HEADER = fs.readFileSync(HEADER_PATH, 'utf8').trimEnd();
-
-const EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
-const SKIP_DIRS = new Set(['node_modules', '.git', 'target', 'build']);
+import {
+  EXPECTED_BLOCK_HEADER,
+  EXTENSIONS,
+  HASH_HEADER,
+  HASH_STYLE_EXTENSIONS,
+  REPO_ROOT,
+  SKIP_DIRS,
+} from './license_header_shared.mjs';
 
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -35,23 +35,45 @@ function walk(dir) {
       continue;
     }
     if (!entry.isFile()) continue;
-    if (!EXTENSIONS.has(path.extname(entry.name))) continue;
-    addHeader(full);
+    const ext = path.extname(entry.name);
+    if (!EXTENSIONS.has(ext) && !HASH_STYLE_EXTENSIONS.has(ext)) continue;
+    addHeader(full, ext);
   }
 }
 
-function hasHeader(text) {
+function hasBlockHeader(text) {
   return text.includes('Copyright Elasticsearch B.V.') && text.includes('Elastic License');
 }
 
-function addHeader(filePath) {
+function hasHashHeaderAtStart(text) {
+  const lines = text.split('\n');
+  let i = 0;
+  if (lines[0]?.startsWith('#!')) i = 1;
+  const slice = lines.slice(i, i + 4).join('\n');
+  return slice === HASH_HEADER;
+}
+
+function addHeader(filePath, ext) {
   const original = fs.readFileSync(filePath, 'utf8');
-  if (hasHeader(original)) return;
+  if (HASH_STYLE_EXTENSIONS.has(ext)) {
+    if (hasHashHeaderAtStart(original)) return;
+    const lines = original.split('\n');
+    const hasShebang = lines[0]?.startsWith('#!');
+    const hashBlock = `${HASH_HEADER}\n\n`;
+    const updated = hasShebang
+      ? `${lines[0]}\n${hashBlock}${lines.slice(1).join('\n')}`
+      : `${hashBlock}${original}`;
+    fs.writeFileSync(filePath, updated, 'utf8');
+    process.stdout.write(`added header: ${path.relative(REPO_ROOT, filePath)}\n`);
+    return;
+  }
+
+  if (hasBlockHeader(original)) return;
 
   const lines = original.split('\n');
   const hasShebang = lines[0].startsWith('#!');
 
-  const headerBlock = `${HEADER}\n\n`;
+  const headerBlock = `${EXPECTED_BLOCK_HEADER}\n\n`;
 
   const updated = hasShebang
     ? `${lines[0]}\n${headerBlock}${lines.slice(1).join('\n')}`
