@@ -507,7 +507,7 @@ export const TopologyCanvas: React.FC<Props> = ({
     };
     drawRef.current();
 
-    // rAF gating + 24 fps throttle. rAF keeps firing at the display's native rate (60/120 Hz),
+    // rAF gating + fps throttle. rAF keeps firing at the display's native rate (60/120 Hz),
     // but drawOverlay only runs when FRAME_INTERVAL_MS has elapsed. Skipped entirely when nothing pulses.
     let animFrame: number | null = null;
     let lastOverlayDraw = 0;
