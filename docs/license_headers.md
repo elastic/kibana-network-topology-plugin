@@ -8,13 +8,18 @@ The canonical header text lives in:
 
 - `licenses/ELASTIC-LICENSE-2.0-HEADER.txt`
 
-All eligible source files must start with that exact comment block (after an optional shebang line).
+`scripts/license_header_shared.mjs` reads that file, derives the YAML/shell `#` form from the same block, and exports paths and extension sets used by `check_license_headers.mjs` and `add_license_headers.mjs` so they stay in sync.
+
+For TypeScript and JavaScript, files must start with that exact block comment (after an optional shebang line).
+
+YAML and shell files use the same wording with `#` line comments at the top (after an optional shebang for shell).
 
 ### Which files require headers
 
 We require headers for:
 
-- `*.ts`, `*.tsx`, `*.js`, `*.jsx`, `*.mjs`, `*.cjs`
+- `*.ts`, `*.tsx`, `*.js`, `*.jsx`, `*.mjs`, `*.cjs` (block comment)
+- `*.yml`, `*.yaml`, `*.sh` (hash line comments; shell keeps shebang first)
 
 This includes TypeScript declaration files (`*.d.ts`).
 
