@@ -41,6 +41,8 @@ const MAX_ROW_WIDTH = 12; // max nodes per row before wrapping within the same t
 // Almost visually indistinguishable from native rate while providing significant CPU savings vs uncapped 60+ fps.
 const OVERLAY_FPS = 15;
 const FRAME_INTERVAL_MS = 1000 / OVERLAY_FPS;
+const LABEL_FONT = '11px sans-serif';
+const IP_FONT = '9px sans-serif';
 
 // Logical topology layout arranged top→bottom:
 //   Top:    External BGP peers (unmanaged nodes with BGP links — transit providers, upstream ASes)
@@ -227,6 +229,8 @@ export const TopologyCanvas: React.FC<Props> = ({
         .addAll(nodes);
     let tree = buildTree();
 
+    const labelWidthCache = new Map<string, number>();
+
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
     const links: PlacedLink[] = visibleLinks
       .map((l) => {
@@ -285,6 +289,16 @@ export const TopologyCanvas: React.FC<Props> = ({
       const x = (px - transform.x) / transform.k;
       const y = (py - transform.y) / transform.k;
       return tree.find(x, y, R + 5) ?? null;
+    }
+
+    function measureLabel(ctx: CanvasRenderingContext2D, text: string, font: string): number {
+      const key = `${font}|${text}`;
+      const cached = labelWidthCache.get(key);
+      if (cached !== undefined) return cached;
+      ctx.font = font;
+      const measured = ctx.measureText(text).width;
+      labelWidthCache.set(key, measured);
+      return measured;
     }
 
     // Static content: healthy links, all node fills + glyphs + labels, healthy node strokes.
@@ -352,11 +366,9 @@ export const TopologyCanvas: React.FC<Props> = ({
         baseCtx.fillText(unmanaged ? '?' : node.type.charAt(0).toUpperCase(), node.x, node.y);
 
         if (transform.k > 0.5) {
-          baseCtx.font = '11px sans-serif';
-          const labelW = baseCtx.measureText(node.label).width;
           const showIp = transform.k > 0.8 && !!node.ip;
-          baseCtx.font = '9px sans-serif';
-          const ipW = showIp ? baseCtx.measureText(node.ip!).width : 0;
+          const labelW = measureLabel(baseCtx, node.label, LABEL_FONT);
+          const ipW = showIp ? measureLabel(baseCtx, node.ip!, IP_FONT) : 0;
           const boxW = Math.max(labelW, ipW) + 10;
           const boxH = showIp ? 30 : 16;
           const boxX = node.x - boxW / 2;
@@ -367,13 +379,13 @@ export const TopologyCanvas: React.FC<Props> = ({
           baseCtx.fill();
 
           baseCtx.fillStyle = hov || sel ? '#FFF' : '#B0B0B0';
-          baseCtx.font = '11px sans-serif';
+          baseCtx.font = LABEL_FONT;
           baseCtx.textAlign = 'center';
           baseCtx.textBaseline = 'top';
           baseCtx.fillText(node.label, node.x, boxY + 2);
           if (showIp) {
             baseCtx.fillStyle = '#808080';
-            baseCtx.font = '9px sans-serif';
+            baseCtx.font = IP_FONT;
             baseCtx.fillText(node.ip!, node.x, boxY + 16);
           }
         }
