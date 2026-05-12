@@ -144,6 +144,8 @@ export const TopologyCanvas: React.FC<Props> = ({
   const drawRef = useRef<(() => void) | null>(null);
   // Persists zoom/pan across data refreshes so the canvas doesn't reset on each poll
   const transformRef = useRef<ZoomTransform | null>(null);
+  // Tracks the dimKey the saved transform was fitted for; drop transform when this changes.
+  const savedDimKeyRef = useRef<string | null>(null);
   // Stable string key for effect deps — changing hidden types triggers re-layout + re-fit
   const hiddenTypesKey = hiddenTypes ? [...hiddenTypes].sort().join(',') : '';
 
@@ -215,7 +217,7 @@ export const TopologyCanvas: React.FC<Props> = ({
     // Recompute zoom-to-fit when canvas dimensions change (e.g. window resize);
     // reuse saved transform only when the same dimensions re-render (data refresh).
     const dimKey = `${width}x${height}:${hiddenTypesKey}`;
-    if (transformRef.current && (transformRef.current as any).__dimKey !== dimKey) {
+    if (transformRef.current && savedDimKeyRef.current !== dimKey) {
       transformRef.current = null;
     }
     if (!transformRef.current && nodes.length > 0) {
@@ -234,8 +236,8 @@ export const TopologyCanvas: React.FC<Props> = ({
           (height - bH * fitScale) / 2 - minY * fitScale
         )
         .scale(fitScale);
-      (t as any).__dimKey = dimKey;
       transformRef.current = t;
+      savedDimKeyRef.current = dimKey;
     }
     let transform = transformRef.current ?? zoomIdentity;
     let hovered: PlacedNode | null = null;
