@@ -32,7 +32,17 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
     },
     async (context, request, response) => {
       try {
-        const { site, page, pageSize, sortOrder, kql, filters: filtersParam, from, to, index } = request.query;
+        const {
+          site,
+          page,
+          pageSize,
+          sortOrder,
+          kql,
+          filters: filtersParam,
+          from,
+          to,
+          index,
+        } = request.query;
         const esClient = (await context.core).elasticsearch.client.asCurrentUser;
 
         const esFilters: any[] = [{ range: { '@timestamp': { gte: from, lte: to } } }];
@@ -77,9 +87,14 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
                     size: 1,
                     sort: [{ '@timestamp': 'desc' }],
                     _source: [
-                      'host.name', 'host.ip', 'host.type',
-                      'observer.vendor', 'observer.os.full',
-                      'network.site', 'network.building', 'network.role',
+                      'host.name',
+                      'host.ip',
+                      'host.type',
+                      'observer.vendor',
+                      'observer.os.full',
+                      'network.site',
+                      'network.building',
+                      'network.role',
                     ],
                   },
                 },
@@ -110,12 +125,18 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
           else if (ifCount > 0 && downCount === ifCount) status = 'degraded';
 
           return {
-            id: b.key, name: b.key,
-            ip: src.host?.ip || '', type: src.host?.type || 'unknown',
-            vendor: src.observer?.vendor || '', os: src.observer?.os?.full || '',
-            status, site: src.network?.site || 'Ungrouped',
-            building: src.network?.building || '', role: src.network?.role || '',
-            interfaceCount: ifCount, downInterfaceCount: downCount,
+            id: b.key,
+            name: b.key,
+            ip: src.host?.ip || '',
+            type: src.host?.type || 'unknown',
+            vendor: src.observer?.vendor || '',
+            os: src.observer?.os?.full || '',
+            status,
+            site: src.network?.site || 'Ungrouped',
+            building: src.network?.building || '',
+            role: src.network?.role || '',
+            interfaceCount: ifCount,
+            downInterfaceCount: downCount,
             lastSeen,
           };
         });
@@ -188,24 +209,24 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
             bgp_sessions: {
               terms: { field: 'bgp_peer.remote_ip', size: 500 },
               aggs: {
-                state:       { terms: { field: 'bgp_peer.peer_state', size: 1 } },
-                remote_asn:  { terms: { field: 'bgp_peer.remote_asn', size: 1 } },
-                local_asn:   { terms: { field: 'bgp_peer.local_asn', size: 1 } },
+                state: { terms: { field: 'bgp_peer.peer_state', size: 1 } },
+                remote_asn: { terms: { field: 'bgp_peer.remote_asn', size: 1 } },
+                local_asn: { terms: { field: 'bgp_peer.local_asn', size: 1 } },
                 prefixes_rx: { max: { field: 'bgp_peer.prefixes_received' } },
                 prefixes_tx: { max: { field: 'bgp_peer.prefixes_sent' } },
-                uptime:      { max: { field: 'bgp_peer.uptime_seconds' } },
-                in_updates:  { max: { field: 'bgp_peer.in_updates' } },
+                uptime: { max: { field: 'bgp_peer.uptime_seconds' } },
+                in_updates: { max: { field: 'bgp_peer.in_updates' } },
                 out_updates: { max: { field: 'bgp_peer.out_updates' } },
               },
             },
             ospf_neighbors: {
               terms: { field: 'ospf_neighbor.neighbor_ip', size: 500 },
               aggs: {
-                state:     { terms: { field: 'ospf_neighbor.state', size: 1 } },
+                state: { terms: { field: 'ospf_neighbor.state', size: 1 } },
                 router_id: { terms: { field: 'ospf_neighbor.router_id', size: 1 } },
-                area_id:   { terms: { field: 'ospf_neighbor.area_id', size: 1 } },
-                priority:  { max: { field: 'ospf_neighbor.priority' } },
-                retrans:   { max: { field: 'ospf_neighbor.retrans_count' } },
+                area_id: { terms: { field: 'ospf_neighbor.area_id', size: 1 } },
+                priority: { max: { field: 'ospf_neighbor.priority' } },
+                retrans: { max: { field: 'ospf_neighbor.retrans_count' } },
               },
             },
             last_seen: { max: { field: '@timestamp' } },
@@ -220,12 +241,15 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
         const lastSeen = (result.aggregations?.last_seen as any)?.value_as_string || '';
 
         const interfaces = ifBuckets.map((b: any) => ({
-          name: b.key, id: b.key,
+          name: b.key,
+          id: b.key,
           speed: b.speed?.value || 0,
           adminStatus: b.admin_status?.buckets?.[0]?.key || 'unknown',
           operStatus: b.status?.buckets?.[0]?.key || 'unknown',
-          trafficIn: b.traffic_in?.value || 0, trafficOut: b.traffic_out?.value || 0,
-          errorsIn: b.errors_in?.value || 0, errorsOut: b.errors_out?.value || 0,
+          trafficIn: b.traffic_in?.value || 0,
+          trafficOut: b.traffic_out?.value || 0,
+          errorsIn: b.errors_in?.value || 0,
+          errorsOut: b.errors_out?.value || 0,
         }));
 
         const downCount = interfaces.filter((i: any) => i.operStatus === 'down').length;
@@ -237,18 +261,25 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
         return response.ok({
           body: {
             device: {
-              id, name: id,
-              ip: hit.host?.ip || '', mac: hit.host?.mac || '',
-              type: hit.host?.type || 'unknown', vendor: hit.observer?.vendor || '',
-              os: hit.observer?.os?.full || '', status,
-              site: hit.network?.site || '', building: hit.network?.building || '',
+              id,
+              name: id,
+              ip: hit.host?.ip || '',
+              mac: hit.host?.mac || '',
+              type: hit.host?.type || 'unknown',
+              vendor: hit.observer?.vendor || '',
+              os: hit.observer?.os?.full || '',
+              status,
+              site: hit.network?.site || '',
+              building: hit.network?.building || '',
               role: hit.network?.role || '',
-              interfaceCount: interfaces.length, downInterfaceCount: downCount,
+              interfaceCount: interfaces.length,
+              downInterfaceCount: downCount,
               lastSeen,
             },
             interfaces,
             neighbors: arpBuckets.map((b: any) => ({
-              ip: b.key, mac: b.mac?.buckets?.[0]?.key || '',
+              ip: b.key,
+              mac: b.mac?.buckets?.[0]?.key || '',
             })),
             ospfNeighbors: ospfBuckets.map((b: any) => ({
               neighborIP: b.key,

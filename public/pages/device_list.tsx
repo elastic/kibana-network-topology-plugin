@@ -7,8 +7,13 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  EuiBasicTable, EuiHealth, EuiSpacer,
-  EuiFlexGroup, EuiFlexItem, EuiCallOut, EuiText,
+  EuiBasicTable,
+  EuiHealth,
+  EuiSpacer,
+  EuiFlexGroup,
+  EuiFlexItem,
+  EuiCallOut,
+  EuiText,
 } from '@elastic/eui';
 import type { Filter, Query } from '@kbn/es-query';
 import type { DataPublicPluginStart } from '@kbn/data-plugin/public';
@@ -20,9 +25,17 @@ import { useDataViewSelector } from '../hooks/use_data_view_selector';
 import type { NetworkDevice } from '../../common';
 import { STATUS_EUI_COLORS } from '../../common';
 
-interface Props { site?: string; from: string; to: string; refreshKey: number; }
+interface Props {
+  site?: string;
+  from: string;
+  to: string;
+  refreshKey: number;
+}
 
-type KibanaServices = CoreStart & { data: DataPublicPluginStart; unifiedSearch: UnifiedSearchPublicPluginStart };
+type KibanaServices = CoreStart & {
+  data: DataPublicPluginStart;
+  unifiedSearch: UnifiedSearchPublicPluginStart;
+};
 
 export const DeviceListView: React.FC<Props> = ({ site, from, to, refreshKey }) => {
   const api = useApi();
@@ -55,14 +68,26 @@ export const DeviceListView: React.FC<Props> = ({ site, from, to, refreshKey }) 
         to,
         index: selectedDataView?.getIndexPattern(),
       });
-      setDevices(r.devices); setTotal(r.total); setError(null);
-    } catch (e: any) { setError(e.message); }
-    finally { setLoading(false); }
+      setDevices(r.devices);
+      setTotal(r.total);
+      setError(null);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   }, [api, site, page, pageSize, submittedQuery, filters, from, to, selectedDataView]);
 
-  useEffect(() => { fetchData(); }, [fetchData, refreshKey]);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData, refreshKey]);
 
-  if (error) return <EuiCallOut title="Error" color="danger"><p>{error}</p></EuiCallOut>;
+  if (error)
+    return (
+      <EuiCallOut title="Error" color="danger">
+        <p>{error}</p>
+      </EuiCallOut>
+    );
 
   const dataViewPickerProps = {
     trigger: {
@@ -76,50 +101,80 @@ export const DeviceListView: React.FC<Props> = ({ site, from, to, refreshKey }) 
 
   return (
     <div style={{ alignSelf: 'flex-start', width: '100%' }}>
-      <EuiFlexGroup><EuiFlexItem>
-        <SearchBar
-          appName="networkTopology"
-          useDefaultBehaviors={false}
-          indexPatterns={selectedDataView ? [selectedDataView] : []}
-          query={query}
-          filters={filters}
-          showDatePicker={false}
-          showFilterBar={true}
-          showQueryInput={true}
-          showSubmitButton={true}
-          displayStyle="inPage"
-          placeholder="Search devices… (e.g. host.name:router-1 or observer.vendor:Cisco)"
-          dataViewPickerComponentProps={dataViewPickerProps}
-          onQueryChange={({ query: q }) => {
-            // Update SearchBar display only — do not fetch until submitted
-            if (q) setQuery(q as Query);
-          }}
-          onQuerySubmit={({ query: q }) => {
-            const committed = (q as Query) ?? query;
-            setQuery(committed);
-            setSubmittedQuery(committed);
-            setPage(0);
-          }}
-          onFiltersUpdated={(f) => {
-            setFilters(f);
-            setPage(0);
-          }}
-        />
-      </EuiFlexItem></EuiFlexGroup>
+      <EuiFlexGroup>
+        <EuiFlexItem>
+          <SearchBar
+            appName="networkTopology"
+            useDefaultBehaviors={false}
+            indexPatterns={selectedDataView ? [selectedDataView] : []}
+            query={query}
+            filters={filters}
+            showDatePicker={false}
+            showFilterBar={true}
+            showQueryInput={true}
+            showSubmitButton={true}
+            displayStyle="inPage"
+            placeholder="Search devices… (e.g. host.name:router-1 or observer.vendor:Cisco)"
+            dataViewPickerComponentProps={dataViewPickerProps}
+            onQueryChange={({ query: q }) => {
+              // Update SearchBar display only — do not fetch until submitted
+              if (q) setQuery(q as Query);
+            }}
+            onQuerySubmit={({ query: q }) => {
+              const committed = (q as Query) ?? query;
+              setQuery(committed);
+              setSubmittedQuery(committed);
+              setPage(0);
+            }}
+            onFiltersUpdated={(f) => {
+              setFilters(f);
+              setPage(0);
+            }}
+          />
+        </EuiFlexItem>
+      </EuiFlexGroup>
       <EuiSpacer size="m" />
-      <EuiBasicTable items={devices} loading={loading}
+      <EuiBasicTable
+        items={devices}
+        loading={loading}
         columns={[
-          { field: 'status', name: 'Status', width: '80px', render: (s: string) => <EuiHealth color={STATUS_EUI_COLORS[s] || 'subdued'}>{s}</EuiHealth> },
+          {
+            field: 'status',
+            name: 'Status',
+            width: '80px',
+            render: (s: string) => (
+              <EuiHealth color={STATUS_EUI_COLORS[s] || 'subdued'}>{s}</EuiHealth>
+            ),
+          },
           { field: 'name', name: 'Hostname', sortable: true },
           { field: 'ip', name: 'IP Address' },
           { field: 'type', name: 'Type' },
           { field: 'vendor', name: 'Vendor' },
           { field: 'site', name: 'Site' },
           { field: 'interfaceCount', name: 'Interfaces', width: '100px' },
-          { field: 'downInterfaceCount', name: 'Down', width: '80px', render: (c: number) => <EuiText size="s" color={c > 0 ? 'danger' : 'default'}>{c}</EuiText> },
+          {
+            field: 'downInterfaceCount',
+            name: 'Down',
+            width: '80px',
+            render: (c: number) => (
+              <EuiText size="s" color={c > 0 ? 'danger' : 'default'}>
+                {c}
+              </EuiText>
+            ),
+          },
         ]}
-        pagination={{ pageIndex: page, pageSize, totalItemCount: total, pageSizeOptions: [25, 50, 100] }}
-        onChange={({ page: p }: any) => { if (p) { setPage(p.index); setPageSize(p.size); } }}
+        pagination={{
+          pageIndex: page,
+          pageSize,
+          totalItemCount: total,
+          pageSizeOptions: [25, 50, 100],
+        }}
+        onChange={({ page: p }: any) => {
+          if (p) {
+            setPage(p.index);
+            setPageSize(p.size);
+          }
+        }}
       />
     </div>
   );

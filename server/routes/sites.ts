@@ -61,7 +61,9 @@ export function registerSitesRoutes(router: IRouter, logger: Logger) {
 
         const sites = sitesAgg.map((bucket: any) => {
           const devices = bucket.device_names?.buckets || [];
-          let upCount = 0, downCount = 0, degradedCount = 0;
+          let upCount = 0;
+          let downCount = 0;
+          let degradedCount = 0;
 
           devices.forEach((d: any) => {
             const downIfaces = d.down_interfaces?.doc_count || 0;

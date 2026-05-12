@@ -8,10 +8,24 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { compressToEncodedURIComponent } from 'lz-string';
 import {
-  EuiTitle, EuiSpacer, EuiPanel, EuiFlexGroup, EuiFlexItem,
-  EuiHealth, EuiText, EuiButton, EuiButtonEmpty, EuiLoadingSpinner, EuiCallOut,
-  EuiAccordion, EuiCodeBlock, EuiTabs, EuiTab, EuiBasicTable,
-  EuiBadge, EuiHorizontalRule,
+  EuiTitle,
+  EuiSpacer,
+  EuiPanel,
+  EuiFlexGroup,
+  EuiFlexItem,
+  EuiHealth,
+  EuiText,
+  EuiButton,
+  EuiButtonEmpty,
+  EuiLoadingSpinner,
+  EuiCallOut,
+  EuiAccordion,
+  EuiCodeBlock,
+  EuiTabs,
+  EuiTab,
+  EuiBasicTable,
+  EuiBadge,
+  EuiHorizontalRule,
 } from '@elastic/eui';
 import { useApi } from '../hooks/use_api';
 import type { SetupHealthResponse } from '../../common';
@@ -264,8 +278,6 @@ output {
 #   pipeline.workers: 1
 `;
 
-
-
 const DIRECT_CONF = `# Direct Elasticsearch indexing (Python / custom script)
 # POST documents to the logs-snmp.topology-default data stream.
 # Set ?pipeline=snmp-device-enrichment to auto-enrich vendor and host.type.
@@ -320,20 +332,22 @@ function devToolsUrl(content: string): string {
 const PIPELINE_BODY = {
   description: 'Enrich SNMP device data — auto-detects device type and vendor from sysDescr',
   processors: [
-    { set: { field: 'host.type',    value: 'unknown',    if: 'ctx.host?.type == null' } },
-    { set: { field: 'network.site', value: 'Ungrouped',  if: 'ctx.network?.site == null' } },
+    { set: { field: 'host.type', value: 'unknown', if: 'ctx.host?.type == null' } },
+    { set: { field: 'network.site', value: 'Ungrouped', if: 'ctx.network?.site == null' } },
     {
       script: {
         description: 'Infer host.type from sysDescr when not set by collector',
         if: 'ctx.host?.type == "unknown" && ctx.observer?.sys_descr != null',
-        source: 'def d=ctx.observer.sys_descr.toLowerCase(); if(d.contains("router")||d.contains("ios xr")||d.contains("junos")){ctx.host.type="router"} else if(d.contains("switch")||d.contains("catalyst")||d.contains("nexus")||d.contains("eos")){ctx.host.type="switch"} else if(d.contains("firewall")||d.contains("asa")||d.contains("fortigate")||d.contains("palo alto")){ctx.host.type="firewall"} else if(d.contains("access point")||d.contains("aironet")||d.contains("aruba ap")){ctx.host.type="ap"} else if(d.contains("linux")||d.contains("windows")||d.contains("vmware")){ctx.host.type="server"}',
+        source:
+          'def d=ctx.observer.sys_descr.toLowerCase(); if(d.contains("router")||d.contains("ios xr")||d.contains("junos")){ctx.host.type="router"} else if(d.contains("switch")||d.contains("catalyst")||d.contains("nexus")||d.contains("eos")){ctx.host.type="switch"} else if(d.contains("firewall")||d.contains("asa")||d.contains("fortigate")||d.contains("palo alto")){ctx.host.type="firewall"} else if(d.contains("access point")||d.contains("aironet")||d.contains("aruba ap")){ctx.host.type="ap"} else if(d.contains("linux")||d.contains("windows")||d.contains("vmware")){ctx.host.type="server"}',
       },
     },
     {
       script: {
         description: 'Detect vendor from sysDescr',
         if: 'ctx.observer?.vendor == null && ctx.observer?.sys_descr != null',
-        source: 'def d=ctx.observer.sys_descr.toLowerCase(); if(d.contains("cisco")){ctx.observer.vendor="Cisco"} else if(d.contains("juniper")){ctx.observer.vendor="Juniper"} else if(d.contains("arista")){ctx.observer.vendor="Arista"} else if(d.contains("fortinet")){ctx.observer.vendor="Fortinet"} else if(d.contains("palo alto")){ctx.observer.vendor="Palo Alto"} else if(d.contains("aruba")||d.contains("hpe")){ctx.observer.vendor="HPE/Aruba"} else{ctx.observer.vendor="Unknown"}',
+        source:
+          'def d=ctx.observer.sys_descr.toLowerCase(); if(d.contains("cisco")){ctx.observer.vendor="Cisco"} else if(d.contains("juniper")){ctx.observer.vendor="Juniper"} else if(d.contains("arista")){ctx.observer.vendor="Arista"} else if(d.contains("fortinet")){ctx.observer.vendor="Fortinet"} else if(d.contains("palo alto")){ctx.observer.vendor="Palo Alto"} else if(d.contains("aruba")||d.contains("hpe")){ctx.observer.vendor="HPE/Aruba"} else{ctx.observer.vendor="Unknown"}',
       },
     },
   ],
@@ -353,37 +367,88 @@ const TEMPLATE_BODY = {
       dynamic: true,
       properties: {
         '@timestamp': { type: 'date' },
-        host: { properties: { name: { type: 'keyword' }, ip: { type: 'ip' }, mac: { type: 'keyword' }, type: { type: 'keyword' } } },
+        host: {
+          properties: {
+            name: { type: 'keyword' },
+            ip: { type: 'ip' },
+            mac: { type: 'keyword' },
+            type: { type: 'keyword' },
+          },
+        },
         observer: {
           properties: {
-            vendor: { type: 'keyword' }, type: { type: 'keyword' },
+            vendor: { type: 'keyword' },
+            type: { type: 'keyword' },
             sys_descr: { type: 'text', fields: { keyword: { type: 'keyword' } } },
             os: { properties: { full: { type: 'keyword' } } },
           },
         },
-        network: { properties: { site: { type: 'keyword' }, building: { type: 'keyword' }, role: { type: 'keyword' } } },
+        network: {
+          properties: {
+            site: { type: 'keyword' },
+            building: { type: 'keyword' },
+            role: { type: 'keyword' },
+          },
+        },
         interface: {
           properties: {
-            name: { type: 'keyword' }, speed: { type: 'long' },
+            name: { type: 'keyword' },
+            speed: { type: 'long' },
             status: { properties: { admin: { type: 'keyword' }, oper: { type: 'keyword' } } },
-            traffic: { properties: { in: { properties: { bytes: { type: 'long' } } }, out: { properties: { bytes: { type: 'long' } } } } },
+            traffic: {
+              properties: {
+                in: { properties: { bytes: { type: 'long' } } },
+                out: { properties: { bytes: { type: 'long' } } },
+              },
+            },
             errors: { properties: { in: { type: 'long' }, out: { type: 'long' } } },
           },
         },
-        ip_addr: { properties: { address: { type: 'ip' }, netmask: { type: 'keyword' }, network: { type: 'keyword' }, prefix_length: { type: 'integer' }, if_index: { type: 'integer' } } },
-        arp: { properties: { ip_addr: { type: 'ip' }, mac_addr: { type: 'keyword' }, interface_index: { type: 'integer' } } },
-        mac_table: { properties: { mac_addr: { type: 'keyword' }, port_index: { type: 'integer' }, status: { type: 'keyword' } } },
+        ip_addr: {
+          properties: {
+            address: { type: 'ip' },
+            netmask: { type: 'keyword' },
+            network: { type: 'keyword' },
+            prefix_length: { type: 'integer' },
+            if_index: { type: 'integer' },
+          },
+        },
+        arp: {
+          properties: {
+            ip_addr: { type: 'ip' },
+            mac_addr: { type: 'keyword' },
+            interface_index: { type: 'integer' },
+          },
+        },
+        mac_table: {
+          properties: {
+            mac_addr: { type: 'keyword' },
+            port_index: { type: 'integer' },
+            status: { type: 'keyword' },
+          },
+        },
         bgp_peer: {
           properties: {
-            remote_ip: { type: 'ip' }, remote_asn: { type: 'long' }, local_asn: { type: 'long' },
-            peer_state: { type: 'keyword' }, prefixes_received: { type: 'long' }, prefixes_sent: { type: 'long' },
-            uptime_seconds: { type: 'long' }, in_updates: { type: 'long' }, out_updates: { type: 'long' },
+            remote_ip: { type: 'ip' },
+            remote_asn: { type: 'long' },
+            local_asn: { type: 'long' },
+            peer_state: { type: 'keyword' },
+            prefixes_received: { type: 'long' },
+            prefixes_sent: { type: 'long' },
+            uptime_seconds: { type: 'long' },
+            in_updates: { type: 'long' },
+            out_updates: { type: 'long' },
           },
         },
         ospf_neighbor: {
           properties: {
-            neighbor_ip: { type: 'ip' }, router_id: { type: 'ip' }, state: { type: 'keyword' },
-            area_id: { type: 'keyword' }, priority: { type: 'integer' }, dead_timer: { type: 'integer' }, retrans_count: { type: 'integer' },
+            neighbor_ip: { type: 'ip' },
+            router_id: { type: 'ip' },
+            state: { type: 'keyword' },
+            area_id: { type: 'keyword' },
+            priority: { type: 'integer' },
+            dead_timer: { type: 'integer' },
+            retrans_count: { type: 'integer' },
           },
         },
       },
@@ -391,61 +456,339 @@ const TEMPLATE_BODY = {
   },
 };
 
-const ES_PIPELINE_DEVTOOLS = `PUT _ingest/pipeline/snmp-device-enrichment\n${JSON.stringify(PIPELINE_BODY, null, 2)}`;
-const ES_TEMPLATE_DEVTOOLS = `PUT _index_template/logs-snmp.topology@template\n${JSON.stringify(TEMPLATE_BODY, null, 2)}`;
+const ES_PIPELINE_DEVTOOLS = `PUT _ingest/pipeline/snmp-device-enrichment\n${JSON.stringify(
+  PIPELINE_BODY,
+  null,
+  2
+)}`;
+const ES_TEMPLATE_DEVTOOLS = `PUT _index_template/logs-snmp.topology@template\n${JSON.stringify(
+  TEMPLATE_BODY,
+  null,
+  2
+)}`;
 
 const FIELD_ROWS = [
-  { field: '@timestamp',                  type: 'date',    ecs: 'Core ECS',   description: 'Poll timestamp', example: '2024-01-01T12:00:00.000Z' },
-  { field: 'host.name',                   type: 'keyword', ecs: 'Core ECS',   description: 'Device hostname (sysName)', example: 'hq-core-rtr-01' },
-  { field: 'host.ip',                     type: 'ip',      ecs: 'Core ECS',   description: 'Management IP address', example: '10.1.1.2' },
-  { field: 'host.mac',                    type: 'keyword', ecs: 'Core ECS',   description: 'Primary MAC address', example: 'aa:bb:cc:dd:ee:01' },
-  { field: 'host.type',                   type: 'keyword', ecs: 'ECS ext.',   description: 'Device category', example: 'router, switch, firewall, server, ap' },
-  { field: 'observer.vendor',             type: 'keyword', ecs: 'Core ECS',   description: 'Vendor name (auto-detected from sys_descr)', example: 'Cisco, Juniper, Palo Alto' },
-  { field: 'observer.sys_descr',          type: 'text',    ecs: 'Core ECS',   description: 'Raw SNMP sysDescr — used by ingest pipeline for enrichment', example: 'Cisco IOS XR Software...' },
-  { field: 'observer.os.full',            type: 'keyword', ecs: 'Core ECS',   description: 'OS version string', example: 'IOS-XR 7.3.2' },
-  { field: 'network.site',                type: 'keyword', ecs: 'ECS ext.',   description: 'Site / datacenter identifier', example: 'HQ-DC1, Branch-NYC' },
-  { field: 'network.building',            type: 'keyword', ecs: 'ECS ext.',   description: 'Building within site', example: 'Main, Annex' },
-  { field: 'network.role',                type: 'keyword', ecs: 'ECS ext.',   description: 'Network tier', example: 'core, distribution, access, server' },
-  { field: 'interface.name',              type: 'keyword', ecs: 'Custom',     description: 'Interface name / ifDescr', example: 'Gi0/0/0, eth0, xe-0/0/0' },
-  { field: 'interface.speed',             type: 'long',    ecs: 'Custom',     description: 'Interface speed in bits/sec (ifSpeed)', example: '10000000000' },
-  { field: 'interface.status.admin',      type: 'keyword', ecs: 'Custom',     description: 'Administrative status', example: 'up, down' },
-  { field: 'interface.status.oper',       type: 'keyword', ecs: 'Custom',     description: 'Operational status', example: 'up, down, testing' },
-  { field: 'interface.traffic.in.bytes',  type: 'long',    ecs: 'Custom',     description: 'Inbound bytes (ifInOctets)', example: '125000000' },
-  { field: 'interface.traffic.out.bytes', type: 'long',    ecs: 'Custom',     description: 'Outbound bytes (ifOutOctets)', example: '87500000' },
-  { field: 'interface.errors.in',         type: 'long',    ecs: 'Custom',     description: 'Input errors (ifInErrors)', example: '0' },
-  { field: 'interface.errors.out',        type: 'long',    ecs: 'Custom',     description: 'Output errors (ifOutErrors)', example: '0' },
-  { field: 'arp.ip_addr',                 type: 'ip',      ecs: 'Custom',     description: 'ARP neighbor IP (ipNetToMediaNetAddress)', example: '10.1.1.3' },
-  { field: 'arp.mac_addr',                type: 'keyword', ecs: 'Custom',     description: 'ARP neighbor MAC (ipNetToMediaPhysAddress)', example: 'aa:bb:cc:dd:ee:02' },
-  { field: 'arp.interface_index',         type: 'integer', ecs: 'Custom',     description: 'Interface on which ARP entry was learned (ipNetToMediaIfIndex)', example: '1' },
-  { field: 'mac_table.mac_addr',          type: 'keyword', ecs: 'Custom',     description: 'Bridge forwarding table MAC (dot1dTpFdbAddress)', example: 'aa:bb:cc:dd:ee:05' },
-  { field: 'mac_table.port_index',        type: 'integer', ecs: 'Custom',     description: 'Bridge port index (dot1dTpFdbPort)', example: '2' },
-  { field: 'mac_table.status',            type: 'keyword', ecs: 'Custom',     description: 'Entry type (dot1dTpFdbStatus)', example: 'learned, static, mgmt' },
-  { field: 'ip_addr.address',             type: 'ip',      ecs: 'Custom',     description: 'Interface IP address (ipAdEntAddr) — used for subnet/segment lookup', example: '192.168.10.1' },
-  { field: 'ip_addr.netmask',             type: 'keyword', ecs: 'Custom',     description: 'Interface subnet mask (ipAdEntNetMask)', example: '255.255.255.0' },
-  { field: 'ip_addr.network',             type: 'keyword', ecs: 'Custom',     description: 'Computed CIDR block from address + netmask — used for segment grouping', example: '192.168.10.0/24' },
-  { field: 'ip_addr.prefix_length',       type: 'integer', ecs: 'Custom',     description: 'Prefix length derived from netmask', example: '24' },
-  { field: 'ip_addr.if_index',            type: 'integer', ecs: 'Custom',     description: 'Interface index (ipAdEntIfIndex) linking this IP to an interface row', example: '3' },
-  { field: 'bgp_peer.remote_ip',          type: 'ip',      ecs: 'Custom',     description: 'BGP peer remote IP address (bgpPeerRemoteAddr)', example: '198.51.100.1' },
-  { field: 'bgp_peer.remote_asn',         type: 'long',    ecs: 'Custom',     description: 'BGP peer remote AS number (bgpPeerRemoteAs)', example: '3356' },
-  { field: 'bgp_peer.local_asn',          type: 'long',    ecs: 'Custom',     description: 'Local AS number (bgpLocalAs)', example: '65000' },
-  { field: 'bgp_peer.peer_state',         type: 'keyword', ecs: 'Custom',     description: 'BGP FSM state (bgpPeerState)', example: 'Established, Idle, Active' },
-  { field: 'bgp_peer.prefixes_received',  type: 'long',    ecs: 'Custom',     description: 'Prefixes received from peer (vendor-specific)', example: '920000' },
-  { field: 'bgp_peer.prefixes_sent',      type: 'long',    ecs: 'Custom',     description: 'Prefixes advertised to peer (vendor-specific)', example: '12' },
-  { field: 'bgp_peer.uptime_seconds',     type: 'long',    ecs: 'Custom',     description: 'Seconds since BGP session established (bgpPeerFsmEstablishedTime)', example: '2592000' },
-  { field: 'bgp_peer.in_updates',         type: 'long',    ecs: 'Custom',     description: 'BGP UPDATE messages received (bgpPeerInUpdates)', example: '45000' },
-  { field: 'bgp_peer.out_updates',        type: 'long',    ecs: 'Custom',     description: 'BGP UPDATE messages sent (bgpPeerOutUpdates)', example: '1200' },
-  { field: 'ospf_neighbor.neighbor_ip',   type: 'ip',      ecs: 'Custom',     description: 'OSPF neighbor IP address (ospfNbrIpAddr)', example: '10.1.1.2' },
-  { field: 'ospf_neighbor.router_id',     type: 'ip',      ecs: 'Custom',     description: 'OSPF neighbor router ID (ospfNbrRtrId)', example: '10.1.1.2' },
-  { field: 'ospf_neighbor.state',         type: 'keyword', ecs: 'Custom',     description: 'OSPF adjacency state (ospfNbrState)', example: 'Full, 2-Way, Down' },
-  { field: 'ospf_neighbor.area_id',       type: 'keyword', ecs: 'Custom',     description: 'OSPF area identifier', example: '0.0.0.0' },
-  { field: 'ospf_neighbor.priority',      type: 'integer', ecs: 'Custom',     description: 'OSPF neighbor priority (ospfNbrPriority)', example: '1' },
-  { field: 'ospf_neighbor.retrans_count', type: 'integer', ecs: 'Custom',     description: 'OSPF state change events (ospfNbrEvents)', example: '3' },
+  {
+    field: '@timestamp',
+    type: 'date',
+    ecs: 'Core ECS',
+    description: 'Poll timestamp',
+    example: '2024-01-01T12:00:00.000Z',
+  },
+  {
+    field: 'host.name',
+    type: 'keyword',
+    ecs: 'Core ECS',
+    description: 'Device hostname (sysName)',
+    example: 'hq-core-rtr-01',
+  },
+  {
+    field: 'host.ip',
+    type: 'ip',
+    ecs: 'Core ECS',
+    description: 'Management IP address',
+    example: '10.1.1.2',
+  },
+  {
+    field: 'host.mac',
+    type: 'keyword',
+    ecs: 'Core ECS',
+    description: 'Primary MAC address',
+    example: 'aa:bb:cc:dd:ee:01',
+  },
+  {
+    field: 'host.type',
+    type: 'keyword',
+    ecs: 'ECS ext.',
+    description: 'Device category',
+    example: 'router, switch, firewall, server, ap',
+  },
+  {
+    field: 'observer.vendor',
+    type: 'keyword',
+    ecs: 'Core ECS',
+    description: 'Vendor name (auto-detected from sys_descr)',
+    example: 'Cisco, Juniper, Palo Alto',
+  },
+  {
+    field: 'observer.sys_descr',
+    type: 'text',
+    ecs: 'Core ECS',
+    description: 'Raw SNMP sysDescr — used by ingest pipeline for enrichment',
+    example: 'Cisco IOS XR Software...',
+  },
+  {
+    field: 'observer.os.full',
+    type: 'keyword',
+    ecs: 'Core ECS',
+    description: 'OS version string',
+    example: 'IOS-XR 7.3.2',
+  },
+  {
+    field: 'network.site',
+    type: 'keyword',
+    ecs: 'ECS ext.',
+    description: 'Site / datacenter identifier',
+    example: 'HQ-DC1, Branch-NYC',
+  },
+  {
+    field: 'network.building',
+    type: 'keyword',
+    ecs: 'ECS ext.',
+    description: 'Building within site',
+    example: 'Main, Annex',
+  },
+  {
+    field: 'network.role',
+    type: 'keyword',
+    ecs: 'ECS ext.',
+    description: 'Network tier',
+    example: 'core, distribution, access, server',
+  },
+  {
+    field: 'interface.name',
+    type: 'keyword',
+    ecs: 'Custom',
+    description: 'Interface name / ifDescr',
+    example: 'Gi0/0/0, eth0, xe-0/0/0',
+  },
+  {
+    field: 'interface.speed',
+    type: 'long',
+    ecs: 'Custom',
+    description: 'Interface speed in bits/sec (ifSpeed)',
+    example: '10000000000',
+  },
+  {
+    field: 'interface.status.admin',
+    type: 'keyword',
+    ecs: 'Custom',
+    description: 'Administrative status',
+    example: 'up, down',
+  },
+  {
+    field: 'interface.status.oper',
+    type: 'keyword',
+    ecs: 'Custom',
+    description: 'Operational status',
+    example: 'up, down, testing',
+  },
+  {
+    field: 'interface.traffic.in.bytes',
+    type: 'long',
+    ecs: 'Custom',
+    description: 'Inbound bytes (ifInOctets)',
+    example: '125000000',
+  },
+  {
+    field: 'interface.traffic.out.bytes',
+    type: 'long',
+    ecs: 'Custom',
+    description: 'Outbound bytes (ifOutOctets)',
+    example: '87500000',
+  },
+  {
+    field: 'interface.errors.in',
+    type: 'long',
+    ecs: 'Custom',
+    description: 'Input errors (ifInErrors)',
+    example: '0',
+  },
+  {
+    field: 'interface.errors.out',
+    type: 'long',
+    ecs: 'Custom',
+    description: 'Output errors (ifOutErrors)',
+    example: '0',
+  },
+  {
+    field: 'arp.ip_addr',
+    type: 'ip',
+    ecs: 'Custom',
+    description: 'ARP neighbor IP (ipNetToMediaNetAddress)',
+    example: '10.1.1.3',
+  },
+  {
+    field: 'arp.mac_addr',
+    type: 'keyword',
+    ecs: 'Custom',
+    description: 'ARP neighbor MAC (ipNetToMediaPhysAddress)',
+    example: 'aa:bb:cc:dd:ee:02',
+  },
+  {
+    field: 'arp.interface_index',
+    type: 'integer',
+    ecs: 'Custom',
+    description: 'Interface on which ARP entry was learned (ipNetToMediaIfIndex)',
+    example: '1',
+  },
+  {
+    field: 'mac_table.mac_addr',
+    type: 'keyword',
+    ecs: 'Custom',
+    description: 'Bridge forwarding table MAC (dot1dTpFdbAddress)',
+    example: 'aa:bb:cc:dd:ee:05',
+  },
+  {
+    field: 'mac_table.port_index',
+    type: 'integer',
+    ecs: 'Custom',
+    description: 'Bridge port index (dot1dTpFdbPort)',
+    example: '2',
+  },
+  {
+    field: 'mac_table.status',
+    type: 'keyword',
+    ecs: 'Custom',
+    description: 'Entry type (dot1dTpFdbStatus)',
+    example: 'learned, static, mgmt',
+  },
+  {
+    field: 'ip_addr.address',
+    type: 'ip',
+    ecs: 'Custom',
+    description: 'Interface IP address (ipAdEntAddr) — used for subnet/segment lookup',
+    example: '192.168.10.1',
+  },
+  {
+    field: 'ip_addr.netmask',
+    type: 'keyword',
+    ecs: 'Custom',
+    description: 'Interface subnet mask (ipAdEntNetMask)',
+    example: '255.255.255.0',
+  },
+  {
+    field: 'ip_addr.network',
+    type: 'keyword',
+    ecs: 'Custom',
+    description: 'Computed CIDR block from address + netmask — used for segment grouping',
+    example: '192.168.10.0/24',
+  },
+  {
+    field: 'ip_addr.prefix_length',
+    type: 'integer',
+    ecs: 'Custom',
+    description: 'Prefix length derived from netmask',
+    example: '24',
+  },
+  {
+    field: 'ip_addr.if_index',
+    type: 'integer',
+    ecs: 'Custom',
+    description: 'Interface index (ipAdEntIfIndex) linking this IP to an interface row',
+    example: '3',
+  },
+  {
+    field: 'bgp_peer.remote_ip',
+    type: 'ip',
+    ecs: 'Custom',
+    description: 'BGP peer remote IP address (bgpPeerRemoteAddr)',
+    example: '198.51.100.1',
+  },
+  {
+    field: 'bgp_peer.remote_asn',
+    type: 'long',
+    ecs: 'Custom',
+    description: 'BGP peer remote AS number (bgpPeerRemoteAs)',
+    example: '3356',
+  },
+  {
+    field: 'bgp_peer.local_asn',
+    type: 'long',
+    ecs: 'Custom',
+    description: 'Local AS number (bgpLocalAs)',
+    example: '65000',
+  },
+  {
+    field: 'bgp_peer.peer_state',
+    type: 'keyword',
+    ecs: 'Custom',
+    description: 'BGP FSM state (bgpPeerState)',
+    example: 'Established, Idle, Active',
+  },
+  {
+    field: 'bgp_peer.prefixes_received',
+    type: 'long',
+    ecs: 'Custom',
+    description: 'Prefixes received from peer (vendor-specific)',
+    example: '920000',
+  },
+  {
+    field: 'bgp_peer.prefixes_sent',
+    type: 'long',
+    ecs: 'Custom',
+    description: 'Prefixes advertised to peer (vendor-specific)',
+    example: '12',
+  },
+  {
+    field: 'bgp_peer.uptime_seconds',
+    type: 'long',
+    ecs: 'Custom',
+    description: 'Seconds since BGP session established (bgpPeerFsmEstablishedTime)',
+    example: '2592000',
+  },
+  {
+    field: 'bgp_peer.in_updates',
+    type: 'long',
+    ecs: 'Custom',
+    description: 'BGP UPDATE messages received (bgpPeerInUpdates)',
+    example: '45000',
+  },
+  {
+    field: 'bgp_peer.out_updates',
+    type: 'long',
+    ecs: 'Custom',
+    description: 'BGP UPDATE messages sent (bgpPeerOutUpdates)',
+    example: '1200',
+  },
+  {
+    field: 'ospf_neighbor.neighbor_ip',
+    type: 'ip',
+    ecs: 'Custom',
+    description: 'OSPF neighbor IP address (ospfNbrIpAddr)',
+    example: '10.1.1.2',
+  },
+  {
+    field: 'ospf_neighbor.router_id',
+    type: 'ip',
+    ecs: 'Custom',
+    description: 'OSPF neighbor router ID (ospfNbrRtrId)',
+    example: '10.1.1.2',
+  },
+  {
+    field: 'ospf_neighbor.state',
+    type: 'keyword',
+    ecs: 'Custom',
+    description: 'OSPF adjacency state (ospfNbrState)',
+    example: 'Full, 2-Way, Down',
+  },
+  {
+    field: 'ospf_neighbor.area_id',
+    type: 'keyword',
+    ecs: 'Custom',
+    description: 'OSPF area identifier',
+    example: '0.0.0.0',
+  },
+  {
+    field: 'ospf_neighbor.priority',
+    type: 'integer',
+    ecs: 'Custom',
+    description: 'OSPF neighbor priority (ospfNbrPriority)',
+    example: '1',
+  },
+  {
+    field: 'ospf_neighbor.retrans_count',
+    type: 'integer',
+    ecs: 'Custom',
+    description: 'OSPF state change events (ospfNbrEvents)',
+    example: '3',
+  },
 ];
 
 const ECS_BADGE_COLOR: Record<string, string> = {
   'Core ECS': 'success',
   'ECS ext.': 'warning',
-  'Custom':   'default',
+  Custom: 'default',
 };
 
 export const SetupGuide: React.FC = () => {
@@ -467,16 +810,20 @@ export const SetupGuide: React.FC = () => {
     }
   }, [api]);
 
-  useEffect(() => { fetchHealth(); }, [fetchHealth]);
+  useEffect(() => {
+    fetchHealth();
+  }, [fetchHealth]);
 
   const collectorConfigs: Record<CollectorTab, { label: string; lang: string; content: string }> = {
-    logstash: { label: 'Logstash',       lang: 'ruby',   content: LOGSTASH_CONF },
-    direct:   { label: 'Direct / Custom', lang: 'python', content: DIRECT_CONF },
+    logstash: { label: 'Logstash', lang: 'ruby', content: LOGSTASH_CONF },
+    direct: { label: 'Direct / Custom', lang: 'python', content: DIRECT_CONF },
   };
 
   return (
     <div style={{ alignSelf: 'flex-start', width: '100%', maxWidth: 900 }}>
-      <EuiTitle size="m"><h2>Plugin Setup Guide</h2></EuiTitle>
+      <EuiTitle size="m">
+        <h2>Plugin Setup Guide</h2>
+      </EuiTitle>
       <EuiText size="s" color="subdued">
         <p>
           This guide walks through installing the required Elasticsearch resources and configuring
@@ -490,7 +837,9 @@ export const SetupGuide: React.FC = () => {
       <EuiPanel hasBorder hasShadow={false} paddingSize="l">
         <EuiFlexGroup alignItems="center" gutterSize="s">
           <EuiFlexItem>
-            <EuiTitle size="s"><h3>Data Source Health</h3></EuiTitle>
+            <EuiTitle size="s">
+              <h3>Data Source Health</h3>
+            </EuiTitle>
           </EuiFlexItem>
           <EuiFlexItem grow={false}>
             <EuiButtonEmpty iconType="refresh" size="s" onClick={fetchHealth} isLoading={loading}>
@@ -502,40 +851,64 @@ export const SetupGuide: React.FC = () => {
         <EuiSpacer size="m" />
 
         {loading && !health && (
-          <EuiFlexGroup justifyContent="center"><EuiFlexItem grow={false}><EuiLoadingSpinner /></EuiFlexItem></EuiFlexGroup>
+          <EuiFlexGroup justifyContent="center">
+            <EuiFlexItem grow={false}>
+              <EuiLoadingSpinner />
+            </EuiFlexItem>
+          </EuiFlexGroup>
         )}
-        {error && <EuiCallOut title="Health check failed" color="danger"><p>{error}</p></EuiCallOut>}
+        {error && (
+          <EuiCallOut title="Health check failed" color="danger">
+            <p>{error}</p>
+          </EuiCallOut>
+        )}
 
         {health && (
           <EuiFlexGroup direction="column" gutterSize="s">
             <EuiFlexItem>
               <EuiHealth color={health.ingestPipeline.installed ? 'success' : 'danger'}>
                 <strong>Ingest pipeline</strong> (snmp-device-enrichment) —{' '}
-                {health.ingestPipeline.installed ? 'Installed' : 'Not found — use the Open in DevTools button in Step 1a below'}
+                {health.ingestPipeline.installed
+                  ? 'Installed'
+                  : 'Not found — use the Open in DevTools button in Step 1a below'}
               </EuiHealth>
             </EuiFlexItem>
             <EuiFlexItem>
               <EuiHealth color={health.indexTemplate.installed ? 'success' : 'danger'}>
                 <strong>Index template</strong> (logs-snmp.topology@template) —{' '}
-                {health.indexTemplate.installed ? 'Installed' : 'Not found — use the Open in DevTools button in Step 1b below'}
+                {health.indexTemplate.installed
+                  ? 'Installed'
+                  : 'Not found — use the Open in DevTools button in Step 1b below'}
               </EuiHealth>
             </EuiFlexItem>
             <EuiFlexItem>
               <EuiHealth color={health.recentData.hasData ? 'success' : 'danger'}>
                 <strong>Recent data (last 1 h)</strong> —{' '}
                 {health.recentData.hasData
-                  ? `${health.recentData.deviceCount} device${health.recentData.deviceCount !== 1 ? 's' : ''} across ${health.recentData.siteCount} site${health.recentData.siteCount !== 1 ? 's' : ''}`
+                  ? `${health.recentData.deviceCount} device${
+                      health.recentData.deviceCount !== 1 ? 's' : ''
+                    } across ${health.recentData.siteCount} site${
+                      health.recentData.siteCount !== 1 ? 's' : ''
+                    }`
                   : 'No data found — configure a collector (Step 2)'}
               </EuiHealth>
             </EuiFlexItem>
             <EuiFlexItem>
               <EuiHealth color={health.fieldCoverage.interfaces ? 'success' : 'warning'}>
                 <strong>Interface metrics</strong> (interface.*) —{' '}
-                {health.fieldCoverage.interfaces ? 'Present' : 'Not detected — topology status depends on this data'}
+                {health.fieldCoverage.interfaces
+                  ? 'Present'
+                  : 'Not detected — topology status depends on this data'}
               </EuiHealth>
             </EuiFlexItem>
             <EuiFlexItem>
-              <EuiHealth color={health.fieldCoverage.arpTable && health.fieldCoverage.macTable ? 'success' : 'warning'}>
+              <EuiHealth
+                color={
+                  health.fieldCoverage.arpTable && health.fieldCoverage.macTable
+                    ? 'success'
+                    : 'warning'
+                }
+              >
                 <strong>ARP / MAC table data</strong> (arp.*, mac_table.*) —{' '}
                 {health.fieldCoverage.arpTable && health.fieldCoverage.macTable
                   ? 'Present — topology links will be discovered'
@@ -557,13 +930,18 @@ export const SetupGuide: React.FC = () => {
       <EuiSpacer size="l" />
 
       {/* ── Step 1 ── */}
-      <EuiAccordion id="step1" buttonContent={<strong>Step 1 — Install Index Template &amp; Ingest Pipeline</strong>} initialIsOpen={!health?.indexTemplate.installed || !health?.ingestPipeline.installed}>
+      <EuiAccordion
+        id="step1"
+        buttonContent={<strong>Step 1 — Install Index Template &amp; Ingest Pipeline</strong>}
+        initialIsOpen={!health?.indexTemplate.installed || !health?.ingestPipeline.installed}
+      >
         <EuiSpacer size="m" />
         <EuiText size="s">
           <p>
             Two Elasticsearch resources must be installed before data is indexed. Click{' '}
-            <strong>Open in DevTools</strong> for each command, then press the run button (▶) in the console to apply.
-            Install the pipeline first — the template references it as the default ingest pipeline.
+            <strong>Open in DevTools</strong> for each command, then press the run button (▶) in the
+            console to apply. Install the pipeline first — the template references it as the default
+            ingest pipeline.
           </p>
         </EuiText>
 
@@ -572,10 +950,19 @@ export const SetupGuide: React.FC = () => {
         {/* 1a — Pipeline */}
         <EuiFlexGroup alignItems="center" gutterSize="s" responsive={false}>
           <EuiFlexItem>
-            <EuiTitle size="xs"><h4>1a — Ingest Pipeline: <code>snmp-device-enrichment</code></h4></EuiTitle>
+            <EuiTitle size="xs">
+              <h4>
+                1a — Ingest Pipeline: <code>snmp-device-enrichment</code>
+              </h4>
+            </EuiTitle>
           </EuiFlexItem>
           <EuiFlexItem grow={false}>
-            <EuiButton size="s" iconType="wrench" href={devToolsUrl(ES_PIPELINE_DEVTOOLS)} target="_blank">
+            <EuiButton
+              size="s"
+              iconType="wrench"
+              href={devToolsUrl(ES_PIPELINE_DEVTOOLS)}
+              target="_blank"
+            >
               Open in DevTools
             </EuiButton>
           </EuiFlexItem>
@@ -583,8 +970,9 @@ export const SetupGuide: React.FC = () => {
         <EuiSpacer size="xs" />
         <EuiText size="xs" color="subdued">
           <p>
-            Classifies device type and detects vendor from <code>observer.sys_descr</code>. The index template sets
-            this as the <code>default_pipeline</code>, so it runs automatically on every indexed document.
+            Classifies device type and detects vendor from <code>observer.sys_descr</code>. The
+            index template sets this as the <code>default_pipeline</code>, so it runs automatically
+            on every indexed document.
           </p>
         </EuiText>
         <EuiSpacer size="s" />
@@ -597,10 +985,19 @@ export const SetupGuide: React.FC = () => {
         {/* 1b — Template */}
         <EuiFlexGroup alignItems="center" gutterSize="s" responsive={false}>
           <EuiFlexItem>
-            <EuiTitle size="xs"><h4>1b — Index Template: <code>logs-snmp.topology@template</code></h4></EuiTitle>
+            <EuiTitle size="xs">
+              <h4>
+                1b — Index Template: <code>logs-snmp.topology@template</code>
+              </h4>
+            </EuiTitle>
           </EuiFlexItem>
           <EuiFlexItem grow={false}>
-            <EuiButton size="s" iconType="wrench" href={devToolsUrl(ES_TEMPLATE_DEVTOOLS)} target="_blank">
+            <EuiButton
+              size="s"
+              iconType="wrench"
+              href={devToolsUrl(ES_TEMPLATE_DEVTOOLS)}
+              target="_blank"
+            >
               Open in DevTools
             </EuiButton>
           </EuiFlexItem>
@@ -608,9 +1005,10 @@ export const SetupGuide: React.FC = () => {
         <EuiSpacer size="xs" />
         <EuiText size="xs" color="subdued">
           <p>
-            Applies correct field types to the <code>logs-snmp.*</code> data stream — notably <code>ip</code> type for CIDR
-            queries and <code>keyword</code> for aggregations. Apply this <em>before</em> indexing any data; the
-            data stream will auto-create on first document write.
+            Applies correct field types to the <code>logs-snmp.*</code> data stream — notably{' '}
+            <code>ip</code> type for CIDR queries and <code>keyword</code> for aggregations. Apply
+            this <em>before</em> indexing any data; the data stream will auto-create on first
+            document write.
           </p>
         </EuiText>
         <EuiSpacer size="s" />
@@ -622,13 +1020,17 @@ export const SetupGuide: React.FC = () => {
       <EuiHorizontalRule margin="l" />
 
       {/* ── Step 2 ── */}
-      <EuiAccordion id="step2" buttonContent={<strong>Step 2 — Configure Your SNMP Collector</strong>} initialIsOpen>
+      <EuiAccordion
+        id="step2"
+        buttonContent={<strong>Step 2 — Configure Your SNMP Collector</strong>}
+        initialIsOpen
+      >
         <EuiSpacer size="m" />
         <EuiText size="s">
           <p>
-            The plugin expects data in a consistent schema regardless of vendor. The collector configs
-            below map standard MIB OIDs to the plugin's field names. The ingest pipeline handles the
-            rest (vendor detection, type classification, defaults).
+            The plugin expects data in a consistent schema regardless of vendor. The collector
+            configs below map standard MIB OIDs to the plugin&apos;s field names. The ingest
+            pipeline pipeline handles the rest (vendor detection, type classification, defaults).
           </p>
           <p>
             All three collectors support Cisco, Palo Alto, Juniper, Arista, Fortinet, and HPE/Aruba
@@ -638,8 +1040,12 @@ export const SetupGuide: React.FC = () => {
         </EuiText>
         <EuiSpacer size="m" />
         <EuiTabs>
-          {(Object.keys(collectorConfigs) as CollectorTab[]).map(tab => (
-            <EuiTab key={tab} isSelected={collectorTab === tab} onClick={() => setCollectorTab(tab)}>
+          {(Object.keys(collectorConfigs) as CollectorTab[]).map((tab) => (
+            <EuiTab
+              key={tab}
+              isSelected={collectorTab === tab}
+              onClick={() => setCollectorTab(tab)}
+            >
               {collectorConfigs[tab].label}
             </EuiTab>
           ))}
@@ -658,19 +1064,27 @@ export const SetupGuide: React.FC = () => {
       <EuiHorizontalRule margin="l" />
 
       {/* ── Step 3 ── */}
-      <EuiAccordion id="step3" buttonContent={<strong>Step 3 — Field Reference &amp; ECS Compliance</strong>}>
+      <EuiAccordion
+        id="step3"
+        buttonContent={<strong>Step 3 — Field Reference &amp; ECS Compliance</strong>}
+      >
         <EuiSpacer size="m" />
         <EuiText size="s">
           <p>
             Fields marked <EuiBadge color="success">Core ECS</EuiBadge> follow the{' '}
-            <a href="https://www.elastic.co/guide/en/ecs/current/index.html" target="_blank" rel="noreferrer">
+            <a
+              href="https://www.elastic.co/guide/en/ecs/current/index.html"
+              target="_blank"
+              rel="noreferrer"
+            >
               Elastic Common Schema
             </a>{' '}
-            exactly. Fields marked <EuiBadge color="warning">ECS ext.</EuiBadge> use an ECS-defined namespace
-            with values that extend beyond the official spec (e.g. using <code>host.type</code> for network
-            device categories). Fields marked <EuiBadge color="default">Custom</EuiBadge> have no ECS
-            equivalent — SNMP interface metrics, ARP tables, and MAC forwarding tables are not covered by
-            any current ECS field set.
+            exactly. Fields marked <EuiBadge color="warning">ECS ext.</EuiBadge> use an ECS-defined
+            namespace with values that extend beyond the official spec (e.g. using{' '}
+            <code>host.type</code> for network device categories). Fields marked{' '}
+            <EuiBadge color="default">Custom</EuiBadge> have no ECS equivalent — SNMP interface
+            metrics, ARP tables, and MAC forwarding tables are not covered by any current ECS field
+            set.
           </p>
         </EuiText>
         <EuiSpacer size="m" />
@@ -679,18 +1093,30 @@ export const SetupGuide: React.FC = () => {
           items={FIELD_ROWS}
           columns={[
             {
-              field: 'field', name: 'Field', width: '260px',
+              field: 'field',
+              name: 'Field',
+              width: '260px',
               render: (f: string) => <code>{f}</code>,
             },
             { field: 'type', name: 'Type', width: '80px' },
             {
-              field: 'ecs', name: 'ECS', width: '100px',
-              render: (e: string) => <EuiBadge color={ECS_BADGE_COLOR[e] || 'default'}>{e}</EuiBadge>,
+              field: 'ecs',
+              name: 'ECS',
+              width: '100px',
+              render: (e: string) => (
+                <EuiBadge color={ECS_BADGE_COLOR[e] || 'default'}>{e}</EuiBadge>
+              ),
             },
             { field: 'description', name: 'Description' },
             {
-              field: 'example', name: 'Example', width: '220px',
-              render: (e: string) => <EuiText size="xs" color="subdued"><span>{e}</span></EuiText>,
+              field: 'example',
+              name: 'Example',
+              width: '220px',
+              render: (e: string) => (
+                <EuiText size="xs" color="subdued">
+                  <span>{e}</span>
+                </EuiText>
+              ),
             },
           ]}
         />
