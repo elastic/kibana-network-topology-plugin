@@ -37,10 +37,9 @@ const R = 20;
 const MIN_H_SPACING = 100; // horizontal
 const MIN_V_SPACING = 120; // vertical (row-to-row)
 const MAX_ROW_WIDTH = 12; // max nodes per row before wrapping within the same tier
-// Overlay animation (pulsing unhealthy elements) is throttled to 24 fps. Pulse period is ~2 s,
-// so sub-1% change per frame at 24 fps — visually indistinguishable from native rate
-// while providing significant CPU savings vs uncapped 60+ fps.
-const OVERLAY_FPS = 24;
+// Overlay animation (pulsing unhealthy elements) is throttled to 15 fps.
+// Almost visually indistinguishable from native rate while providing significant CPU savings vs uncapped 60+ fps.
+const OVERLAY_FPS = 15;
 const FRAME_INTERVAL_MS = 1000 / OVERLAY_FPS;
 
 // Logical topology layout arranged top→bottom:
