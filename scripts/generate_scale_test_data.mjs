@@ -35,9 +35,9 @@ const DEVICE_COUNT = (() => {
 })();
 
 const DENSITY_FRACTIONS = {
-  sparse: { routerToSwitch: 0.12, switchToServer: 0.2 },
-  medium: { routerToSwitch: 0.5, switchToServer: 0.5 },
-  dense: { routerToSwitch: 1.0, switchToServer: 1.0 },
+  sparse: { routerToSwitch: 0.12, switchToServer: 0.2, firewallToRouter: 0.12 },
+  medium: { routerToSwitch: 0.5, switchToServer: 0.5, firewallToRouter: 0.5 },
+  dense: { routerToSwitch: 1.0, switchToServer: 1.0, firewallToRouter: 1.0 },
 };
 
 const DENSITY = (() => {
@@ -233,6 +233,30 @@ async function main() {
           observer: { vendor: srv.vendor, sys_descr: srv.descr },
           network: { site: srv.site, building: srv.building, role: srv.role },
           arp: { ip_addr: sw.ip, mac_addr: sw.mac, interface_index: 1 },
+        });
+      }
+    }
+
+    // Firewall→Router links
+    const firewalls = site.devices.filter((d) => d.type === 'firewall');
+    for (const fw of firewalls) {
+      for (const r of routers.slice(
+        0,
+        Math.max(1, Math.ceil(routers.length * DENSITY.firewallToRouter))
+      )) {
+        docs.push({
+          '@timestamp': ts,
+          host: { name: fw.name, ip: fw.ip, mac: fw.mac, type: fw.type },
+          observer: { vendor: fw.vendor, sys_descr: fw.descr },
+          network: { site: fw.site, building: fw.building, role: fw.role },
+          arp: { ip_addr: r.ip, mac_addr: r.mac, interface_index: 1 },
+        });
+        docs.push({
+          '@timestamp': ts,
+          host: { name: r.name, ip: r.ip, mac: r.mac, type: r.type },
+          observer: { vendor: r.vendor, sys_descr: r.descr },
+          network: { site: r.site, building: r.building, role: r.role },
+          arp: { ip_addr: fw.ip, mac_addr: fw.mac, interface_index: 3 },
         });
       }
     }
