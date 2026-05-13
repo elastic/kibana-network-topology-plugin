@@ -7,12 +7,32 @@
  */
 
 /**
- * Large-scale SNMP topology generator: 1000 nodes with BGP/OSPF/ARP interconnections
- * Usage: node scripts/generate_scale_test_data.mjs [ES_HOST] [USER] [PASSWORD]
+ * Large-scale SNMP topology generator with BGP/OSPF/ARP interconnections
+ * Usage: node scripts/generate_scale_test_data.mjs [ES_HOST] [USER] [PASSWORD] [--devices=N]
+ *   --devices  Total device count (default: 1000, min: 10, max: 25600)
  */
-const ES = process.argv[2] || 'http://localhost:9200';
-const U = process.argv[3] || 'elastic';
-const P = process.argv[4] || 'changeme';
+import { parseArgs } from 'node:util';
+
+const { values: flags, positionals } = parseArgs({
+  args: process.argv.slice(2),
+  options: { devices: { type: 'string', default: '1000' } },
+  allowPositionals: true,
+});
+
+const DEVICE_COUNT = (() => {
+  const n = Number(flags.devices);
+  if (!Number.isInteger(n) || n < 10 || n > 25600) {
+    console.error(
+      `Error: --devices must be an integer between 10 and 25600 (got "${flags.devices}")`
+    );
+    process.exit(1);
+  }
+  return n;
+})();
+
+const ES = positionals[0] || 'http://localhost:9200';
+const U = positionals[1] || 'elastic';
+const P = positionals[2] || 'changeme';
 const IDX = 'logs-snmp.topology-default';
 const AUTH = Buffer.from(`${U}:${P}`).toString('base64');
 
@@ -44,19 +64,29 @@ const roleForDeviceIndex = (d) => {
   return 'access';
 };
 
-// Generate 1000 devices across 10 sites
-console.log('=== Generating 1000-node SNMP topology ===');
-const sites = [];
-const SITES_COUNT = 10;
+// Generate devices distributed across sites (100 devices/site, max 256 sites)
 const DEVICES_PER_SITE = 100;
+const MAX_SITES = 256;
+const SITES_COUNT = Math.ceil(DEVICE_COUNT / DEVICES_PER_SITE);
+if (SITES_COUNT > MAX_SITES) {
+  console.error(
+    `Error: ${DEVICE_COUNT} devices requires ${SITES_COUNT} sites, exceeding the max of ${MAX_SITES}`
+  );
+  process.exit(1);
+}
+const siteLabel = (s) => String.fromCharCode(65 + Math.floor(s / 26), 65 + (s % 26));
+console.log(`=== Generating ${DEVICE_COUNT}-node SNMP topology across ${SITES_COUNT} sites ===`);
+const sites = [];
 let globalDeviceId = 0;
 
 for (let s = 0; s < SITES_COUNT; s++) {
-  const siteName = `Region-${String.fromCharCode(65 + s)}`; // Region-A, Region-B, ...
+  const siteName = `Region-${siteLabel(s)}`;
   const siteDevices = [];
   const siteSubnet = `10.${s}`;
+  const devicesInSite =
+    s === SITES_COUNT - 1 ? DEVICE_COUNT - s * DEVICES_PER_SITE : DEVICES_PER_SITE;
 
-  for (let d = 0; d < DEVICES_PER_SITE; d++) {
+  for (let d = 0; d < devicesInSite; d++) {
     const type = pick(DEVICE_TYPES);
     const vendor = pick(VENDORS);
     const device = {
