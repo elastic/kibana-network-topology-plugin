@@ -791,7 +791,11 @@ const ECS_BADGE_COLOR: Record<string, string> = {
   Custom: 'default',
 };
 
-export const SetupGuide: React.FC = () => {
+interface Props {
+  onReady?: () => void;
+}
+
+export const SetupGuide: React.FC<Props> = ({ onReady }) => {
   const api = useApi();
   const [health, setHealth] = useState<SetupHealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -813,6 +817,10 @@ export const SetupGuide: React.FC = () => {
   useEffect(() => {
     fetchHealth();
   }, [fetchHealth]);
+
+  useEffect(() => {
+    if (!loading) onReady?.();
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const collectorConfigs: Record<CollectorTab, { label: string; lang: string; content: string }> = {
     logstash: { label: 'Logstash', lang: 'ruby', content: LOGSTASH_CONF },

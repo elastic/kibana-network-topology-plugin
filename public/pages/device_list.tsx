@@ -30,6 +30,7 @@ interface Props {
   from: string;
   to: string;
   refreshKey: number;
+  onReady?: () => void;
 }
 
 type KibanaServices = CoreStart & {
@@ -37,7 +38,7 @@ type KibanaServices = CoreStart & {
   unifiedSearch: UnifiedSearchPublicPluginStart;
 };
 
-export const DeviceListView: React.FC<Props> = ({ site, from, to, refreshKey }) => {
+export const DeviceListView: React.FC<Props> = ({ site, from, to, refreshKey, onReady }) => {
   const api = useApi();
   const { services } = useKibana<KibanaServices>();
   const SearchBar = services.unifiedSearch.ui.SearchBar;
@@ -81,6 +82,10 @@ export const DeviceListView: React.FC<Props> = ({ site, from, to, refreshKey }) 
   useEffect(() => {
     fetchData();
   }, [fetchData, refreshKey]);
+
+  useEffect(() => {
+    if (!loading) onReady?.();
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error)
     return (

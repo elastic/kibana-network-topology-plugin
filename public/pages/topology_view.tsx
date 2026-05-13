@@ -37,6 +37,7 @@ interface Props {
   from: string;
   to: string;
   refreshKey: number;
+  onReady?: () => void;
 }
 
 export const TopologyView: React.FC<Props> = ({
@@ -46,6 +47,7 @@ export const TopologyView: React.FC<Props> = ({
   from,
   to,
   refreshKey,
+  onReady,
 }) => {
   const api = useApi();
   const [graph, setGraph] = useState<TopologyGraph | null>(null);
@@ -230,6 +232,7 @@ export const TopologyView: React.FC<Props> = ({
               selectedNodeId={selectedDevice}
               hiddenTypes={hiddenTypes}
               animationsDisabled={animationsDisabled}
+              onReady={onReady}
             />
           )}
         </EuiPanel>

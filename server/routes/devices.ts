@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+import apm from 'elastic-apm-node';
 import type { IRouter, Logger } from '@kbn/core/server';
 import { schema } from '@kbn/config-schema';
 import { buildEsQuery, type Filter, type Query } from '@kbn/es-query';
@@ -31,6 +32,7 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
       },
     },
     async (context, request, response) => {
+      const t0 = performance.now();
       try {
         const {
           site,
@@ -43,6 +45,14 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
           to,
           index,
         } = request.query;
+        const tx = apm.currentTransaction;
+        if (tx) {
+          tx.addLabels({
+            networkTopology_route: 'devices',
+            networkTopology_site: site ?? 'all',
+            networkTopology_index: index,
+          });
+        }
         const esClient = (await context.core).elasticsearch.client.asCurrentUser;
 
         const esFilters: any[] = [{ range: { '@timestamp': { gte: from, lte: to } } }];
@@ -141,6 +151,9 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
           };
         });
 
+        logger.debug(
+          `[networkTopology.devices] device_count=${devices.length} total=${total} total_ms=${Math.round(performance.now() - t0)}`
+        );
         return response.ok({ body: { devices, total, page, pageSize } });
       } catch (err) {
         logger.error(`Devices route error: ${err}`);
@@ -166,9 +179,18 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
       },
     },
     async (context, request, response) => {
+      const t0 = performance.now();
       try {
         const { id } = request.params;
         const { from, to, index } = request.query;
+        const tx = apm.currentTransaction;
+        if (tx) {
+          tx.addLabels({
+            networkTopology_route: 'device_detail',
+            networkTopology_device_id: id,
+            networkTopology_index: index,
+          });
+        }
         const esClient = (await context.core).elasticsearch.client.asCurrentUser;
 
         const result = await esClient.search({
@@ -258,6 +280,9 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
         if (msSince > DEVICE_DOWN_THRESHOLD_MS) status = 'down';
         else if (interfaces.length > 0 && downCount === interfaces.length) status = 'degraded';
 
+        logger.debug(
+          `[networkTopology.device_detail] id=${id} ifaces=${interfaces.length} total_ms=${Math.round(performance.now() - t0)}`
+        );
         return response.ok({
           body: {
             device: {

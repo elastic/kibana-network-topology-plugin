@@ -22,6 +22,8 @@ interface Props {
   hiddenTypes?: Set<string>;
   /** When true, the overlay rAF loop is never armed and unhealthy strokes paint at a stable mid-pulse intensity. */
   animationsDisabled: boolean;
+  /** Called once after the first draw and zoom behavior attachment — marks the canvas as interactive. */
+  onReady?: () => void;
 }
 
 interface PlacedNode extends TopologyNode {
@@ -154,6 +156,7 @@ export const TopologyCanvas: React.FC<Props> = ({
   selectedNodeId,
   hiddenTypes,
   animationsDisabled,
+  onReady,
 }) => {
   // Two stacked canvases. Base holds static content (healthy strokes, fills, glyphs, labels);
   // overlay holds pulsing/selected strokes + tooltip. Mouse events live on the base canvas;
@@ -546,6 +549,7 @@ export const TopologyCanvas: React.FC<Props> = ({
       });
     select(baseCanvas).call(zoomBehavior);
     select(baseCanvas).call(zoomBehavior.transform, transform);
+    onReady?.();
 
     const onMouseMove = (e: MouseEvent) => {
       const r = baseCanvas.getBoundingClientRect();

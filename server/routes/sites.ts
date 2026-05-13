@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+import apm from 'elastic-apm-node';
 import type { IRouter, Logger } from '@kbn/core/server';
 import { schema } from '@kbn/config-schema';
 import { API_ROUTES, DEFAULT_SNMP_INDEX, DEVICE_DOWN_THRESHOLD_MS } from '../../common';
@@ -22,8 +23,13 @@ export function registerSitesRoutes(router: IRouter, logger: Logger) {
       },
     },
     async (context, request, response) => {
+      const t0 = performance.now();
       try {
         const { from, to, index } = request.query;
+        const tx = apm.currentTransaction;
+        if (tx) {
+          tx.addLabels({ networkTopology_route: 'sites', networkTopology_index: index });
+        }
         const esClient = (await context.core).elasticsearch.client.asCurrentUser;
 
         const result = await esClient.search({
@@ -93,6 +99,9 @@ export function registerSitesRoutes(router: IRouter, logger: Logger) {
 
         const discoveredCount = (result.aggregations?.discovered_ips as any)?.value ?? 0;
 
+        logger.debug(
+          `[networkTopology.sites] site_count=${sites.length} total_ms=${Math.round(performance.now() - t0)}`
+        );
         return response.ok({
           body: {
             sites,

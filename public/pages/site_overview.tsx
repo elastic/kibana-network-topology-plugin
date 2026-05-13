@@ -28,15 +28,20 @@ interface Props {
   from: string;
   to: string;
   refreshKey: number;
+  onReady?: () => void;
 }
 
-export const SiteOverview: React.FC<Props> = ({ onSiteClick, from, to, refreshKey }) => {
+export const SiteOverview: React.FC<Props> = ({ onSiteClick, from, to, refreshKey, onReady }) => {
   const api = useApi();
   const [sites, setSites] = useState<SiteHealth[]>([]);
   const [totalDevices, setTotalDevices] = useState(0);
   const [discoveredCount, setDiscoveredCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!loading) onReady?.();
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false;

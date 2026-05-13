@@ -8,6 +8,7 @@
 /* eslint-disable no-bitwise */
 
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
+import { tracedSearch } from './perf_tracing';
 import type {
   TopologyGraph,
   TopologyNode,
@@ -56,7 +57,7 @@ export async function buildTopologyFromArpMac(
   // since host.ip is always the management/polling address and may be on a different VLAN.
   // Pre-query ipAddrTable docs to get device names, then restrict all main queries by name.
   if (cidr) {
-    const ipAddrResult = await esClient.search({
+    const ipAddrResult = await tracedSearch(esClient, 'topology.cidr_lookup', {
       index,
       size: 0,
       query: {
@@ -83,7 +84,7 @@ export async function buildTopologyFromArpMac(
   }
 
   // Step 1: Get all polled devices
-  const devicesResult = await esClient.search({
+  const devicesResult = await tracedSearch(esClient, 'topology.devices', {
     index,
     size: 0,
     query: { bool: { filter: filters } },
@@ -158,7 +159,7 @@ export async function buildTopologyFromArpMac(
   }
 
   // Step 2: ARP tables
-  const arpResult = await esClient.search({
+  const arpResult = await tracedSearch(esClient, 'topology.arp', {
     index,
     size: 0,
     query: { bool: { filter: [...filters, { exists: { field: 'arp.mac_addr' } }] } },
@@ -176,7 +177,7 @@ export async function buildTopologyFromArpMac(
   });
 
   // Step 3: MAC/bridge forwarding tables
-  const macTableResult = await esClient.search({
+  const macTableResult = await tracedSearch(esClient, 'topology.mac_fdb', {
     index,
     size: 0,
     query: { bool: { filter: [...filters, { exists: { field: 'mac_table.mac_addr' } }] } },
@@ -311,7 +312,7 @@ export async function buildTopologyFromArpMac(
   }
 
   // Step 5: BGP peer sessions — create links between BGP neighbors
-  const bgpResult = await esClient.search({
+  const bgpResult = await tracedSearch(esClient, 'topology.bgp', {
     index,
     size: 0,
     query: { bool: { filter: [...filters, { exists: { field: 'bgp_peer.remote_ip' } }] } },
@@ -391,7 +392,7 @@ export async function buildTopologyFromArpMac(
   }
 
   // Step 6: OSPF neighbor adjacencies — create links between OSPF neighbors
-  const ospfResult = await esClient.search({
+  const ospfResult = await tracedSearch(esClient, 'topology.ospf', {
     index,
     size: 0,
     query: { bool: { filter: [...filters, { exists: { field: 'ospf_neighbor.neighbor_ip' } }] } },

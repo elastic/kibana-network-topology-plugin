@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   EuiPage,
   EuiPageBody,
@@ -29,6 +29,12 @@ import { SetupGuide } from './setup_guide';
 
 type ViewMode = 'overview' | 'topology' | 'devices' | 'setup';
 
+interface ApmTx {
+  name: string;
+  addLabels: (labels: Record<string, string | number | boolean>) => void;
+  end: () => void;
+}
+
 export const NetworkTopologyApp: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('overview');
   const [scope, setScope] = useState<{ site?: string; cidr?: string }>({});
@@ -37,6 +43,37 @@ export const NetworkTopologyApp: React.FC = () => {
   const [isPaused, setIsPaused] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(30000);
   const [refreshKey, setRefreshKey] = useState(0);
+  // Use the already-initialized RUM agent core sets up on window — avoids a direct
+  // @elastic/apm-rum import and correctly no-ops when APM is inactive.
+  const rumApm = (window as any).elasticApm as
+    | { startTransaction: (name: string, type: string) => ApmTx | null }
+    | undefined;
+  const txRef = useRef<ApmTx | null>(null);
+  const overviewReadyCount = useRef(0);
+
+  useEffect(() => {
+    if (txRef.current) {
+      txRef.current.addLabels({ tab_load_complete: false });
+      txRef.current.end();
+    }
+    overviewReadyCount.current = 0;
+    txRef.current = rumApm?.startTransaction(`networkTopology ${viewMode}`, 'custom') ?? null;
+  }, [viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleOverviewReady = useCallback(() => {
+    overviewReadyCount.current += 1;
+    if (overviewReadyCount.current >= 2) {
+      txRef.current?.addLabels({ tab_load_complete: true });
+      txRef.current?.end();
+      txRef.current = null;
+    }
+  }, []);
+
+  const handleTabReady = useCallback(() => {
+    txRef.current?.addLabels({ tab_load_complete: true });
+    txRef.current?.end();
+    txRef.current = null;
+  }, []);
 
   const handleSiteClick = useCallback((site: string) => {
     setScope({ site });
@@ -135,6 +172,7 @@ export const NetworkTopologyApp: React.FC = () => {
               from={start}
               to={end}
               refreshKey={refreshKey}
+              onReady={handleOverviewReady}
             />
             <EuiSpacer size="xl" />
             <EuiTitle size="s">
@@ -146,6 +184,7 @@ export const NetworkTopologyApp: React.FC = () => {
               from={start}
               to={end}
               refreshKey={refreshKey}
+              onReady={handleOverviewReady}
             />
           </>
         )}
@@ -157,12 +196,19 @@ export const NetworkTopologyApp: React.FC = () => {
             from={start}
             to={end}
             refreshKey={refreshKey}
+            onReady={handleTabReady}
           />
         )}
         {viewMode === 'devices' && (
-          <DeviceListView site={scope.site} from={start} to={end} refreshKey={refreshKey} />
+          <DeviceListView
+            site={scope.site}
+            from={start}
+            to={end}
+            refreshKey={refreshKey}
+            onReady={handleTabReady}
+          />
         )}
-        {viewMode === 'setup' && <SetupGuide />}
+        {viewMode === 'setup' && <SetupGuide onReady={handleTabReady} />}
       </EuiPageBody>
     </EuiPage>
   );

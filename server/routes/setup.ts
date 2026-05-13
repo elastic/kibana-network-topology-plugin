@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+import apm from 'elastic-apm-node';
 import type { IRouter, Logger } from '@kbn/core/server';
 import { API_ROUTES, DEFAULT_SNMP_INDEX } from '../../common';
 
@@ -15,7 +16,12 @@ export function registerSetupRoutes(router: IRouter, logger: Logger) {
       validate: false,
     },
     async (context, _request, response) => {
+      const t0 = performance.now();
       try {
+        const tx = apm.currentTransaction;
+        if (tx) {
+          tx.addLabels({ networkTopology_route: 'setup_health' });
+        }
         const esClient = (await context.core).elasticsearch.client.asCurrentUser;
 
         const [templateResult, pipelineResult, dataResult, coverageResult] =
@@ -93,6 +99,9 @@ export function registerSetupRoutes(router: IRouter, logger: Logger) {
             ? ((coverageResult.value.aggregations?.has_ospf as any)?.doc_count ?? 0) > 0
             : false;
 
+        logger.debug(
+          `[networkTopology.setup_health] devices=${deviceCount} total_ms=${Math.round(performance.now() - t0)}`
+        );
         return response.ok({
           body: {
             indexTemplate: { installed: indexTemplate },

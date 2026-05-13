@@ -28,13 +28,18 @@ interface Props {
   from: string;
   to: string;
   refreshKey: number;
+  onReady?: () => void;
 }
 
-export const SegmentOverview: React.FC<Props> = ({ onSegmentClick, from, to, refreshKey }) => {
+export const SegmentOverview: React.FC<Props> = ({ onSegmentClick, from, to, refreshKey, onReady }) => {
   const api = useApi();
   const [segments, setSegments] = useState<SegmentHealth[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!loading) onReady?.();
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false;

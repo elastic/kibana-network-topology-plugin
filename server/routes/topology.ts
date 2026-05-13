@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+import apm from 'elastic-apm-node';
 import type { IRouter, Logger } from '@kbn/core/server';
 import { schema } from '@kbn/config-schema';
 import { API_ROUTES, DEFAULT_SNMP_INDEX } from '../../common';
@@ -27,8 +28,18 @@ export function registerTopologyRoutes(router: IRouter, logger: Logger) {
       },
     },
     async (context, request, response) => {
+      const t0 = performance.now();
+      const heapBefore = process.memoryUsage().heapUsed;
       try {
         const { site, building, role, cidr, from, to, index } = request.query;
+        const tx = apm.currentTransaction;
+        if (tx) {
+          tx.addLabels({
+            networkTopology_route: 'topology',
+            networkTopology_site: site ?? 'all',
+            networkTopology_index: index,
+          });
+        }
         const esClient = (await context.core).elasticsearch.client.asCurrentUser;
 
         const graph = await buildTopologyFromArpMac(esClient, {
@@ -42,6 +53,9 @@ export function registerTopologyRoutes(router: IRouter, logger: Logger) {
           logger,
         });
 
+        logger.debug(
+          `[networkTopology.topology] nodes=${graph.nodes.length} links=${graph.links.length} total_ms=${Math.round(performance.now() - t0)} heap_delta=${process.memoryUsage().heapUsed - heapBefore}`
+        );
         return response.ok({
           body: {
             graph,

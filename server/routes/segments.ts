@@ -7,6 +7,7 @@
 
 /* eslint-disable no-bitwise */
 
+import apm from 'elastic-apm-node';
 import type { IRouter, Logger } from '@kbn/core/server';
 import { schema } from '@kbn/config-schema';
 import { API_ROUTES, DEFAULT_SNMP_INDEX, DEVICE_DOWN_THRESHOLD_MS } from '../../common';
@@ -25,8 +26,18 @@ export function registerSegmentsRoutes(router: IRouter, logger: Logger) {
       },
     },
     async (context, request, response) => {
+      const t0 = performance.now();
+      const heapBefore = process.memoryUsage().heapUsed;
       try {
         const { from, to, site, index } = request.query;
+        const tx = apm.currentTransaction;
+        if (tx) {
+          tx.addLabels({
+            networkTopology_route: 'segments',
+            networkTopology_site: site ?? 'all',
+            networkTopology_index: index,
+          });
+        }
         const esClient = (await context.core).elasticsearch.client.asCurrentUser;
 
         const baseFilters: any[] = [{ range: { '@timestamp': { gte: from, lte: to } } }];
@@ -196,6 +207,9 @@ export function registerSegmentsRoutes(router: IRouter, logger: Logger) {
             return key(a.segment) - key(b.segment);
           });
 
+        logger.debug(
+          `[networkTopology.segments] segment_count=${segments.length} total_ms=${Math.round(performance.now() - t0)} heap_delta=${process.memoryUsage().heapUsed - heapBefore}`
+        );
         return response.ok({
           body: {
             segments,
