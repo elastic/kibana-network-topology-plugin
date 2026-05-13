@@ -20,6 +20,8 @@ interface Props {
   selectedNodeId: string | null;
   /** Set of type keys whose nodes should be hidden. Use 'discovered' for unmanaged ARP nodes. */
   hiddenTypes?: Set<string>;
+  /** When true, the overlay rAF loop is never armed and unhealthy strokes paint at a stable mid-pulse intensity. */
+  animationsDisabled: boolean;
 }
 
 interface PlacedNode extends TopologyNode {
@@ -151,6 +153,7 @@ export const TopologyCanvas: React.FC<Props> = ({
   onNodeClick,
   selectedNodeId,
   hiddenTypes,
+  animationsDisabled,
 }) => {
   // Two stacked canvases. Base holds static content (healthy strokes, fills, glyphs, labels);
   // overlay holds pulsing/selected strokes + tooltip. Mouse events live on the base canvas;
@@ -401,8 +404,8 @@ export const TopologyCanvas: React.FC<Props> = ({
       applyTransform(overlayCtx);
 
       // Pulse phase: 0→1 sinusoidal oscillation (~2s cycle) for unhealthy elements.
-      // Provides a motion cue so status is perceivable without relying on color alone.
-      const pulse = (Math.sin((performance.now() / 1000) * 3) + 1) / 2;
+      // When animations are disabled, freeze at mid-cycle so strokes stay visible at a stable intensity.
+      const pulse = animationsDisabled ? 0.5 : (Math.sin((performance.now() / 1000) * 3) + 1) / 2;
 
       for (const link of links) {
         if (link.status === 'up') continue;
@@ -507,11 +510,12 @@ export const TopologyCanvas: React.FC<Props> = ({
     };
     drawRef.current();
 
-    // rAF gating + 24 fps throttle. rAF keeps firing at the display's native rate (60/120 Hz),
-    // but drawOverlay only runs when FRAME_INTERVAL_MS has elapsed. Skipped entirely when nothing pulses.
+    // rAF gating + fps throttle. rAF keeps firing at the display's native rate (60/120 Hz),
+    // but drawOverlay only runs when FRAME_INTERVAL_MS has elapsed. Skipped entirely when nothing pulses
+    // or when animations are disabled.
     let animFrame: number | null = null;
     let lastOverlayDraw = 0;
-    if (anyUnhealthy) {
+    if (anyUnhealthy && !animationsDisabled) {
       const animate = (now: number) => {
         if (now - lastOverlayDraw >= FRAME_INTERVAL_MS) {
           drawOverlay();
@@ -630,7 +634,7 @@ export const TopologyCanvas: React.FC<Props> = ({
     };
     // TODO: Revisit wether hiddenTypes should also be part of the deps array
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, width, height, onNodeClick, hiddenTypesKey]);
+  }, [graph, width, height, onNodeClick, hiddenTypesKey, animationsDisabled]);
 
   return (
     <div

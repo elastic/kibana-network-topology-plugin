@@ -16,12 +16,19 @@ import {
   EuiSpacer,
   EuiText,
   EuiBadge,
+  EuiSwitch,
+  EuiIconTip,
+  EuiIcon,
 } from '@elastic/eui';
 import { useApi } from '../hooks/use_api';
 import type { TopologyGraph } from '../../common';
 import { DEVICE_TYPE_CONFIG } from '../../common';
 import { TopologyCanvas } from '../components/topology_canvas';
 import { DeviceFlyout } from '../components/device_flyout';
+
+// Above this size, animations auto-disable to protect against perf cliffs on large graphs.
+// Single tunable — users can always override via the toolbar switch.
+const LARGE_GRAPH_NODE_THRESHOLD = 300;
 
 interface Props {
   site?: string;
@@ -46,6 +53,8 @@ export const TopologyView: React.FC<Props> = ({
   const [error, setError] = useState<string | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
+  // null = follow auto (off on large graphs, on otherwise). true/false = explicit user choice.
+  const [animationsUserPref, setAnimationsUserPref] = useState<boolean | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(0);
 
@@ -124,6 +133,9 @@ export const TopologyView: React.FC<Props> = ({
     );
   if (!graph) return null;
 
+  const isLargeGraph = graph.nodes.length >= LARGE_GRAPH_NODE_THRESHOLD;
+  const animationsDisabled = animationsUserPref ?? isLargeGraph;
+
   return (
     <>
       <EuiFlexGroup alignItems="center" gutterSize="m">
@@ -179,6 +191,32 @@ export const TopologyView: React.FC<Props> = ({
             })}
           </EuiFlexGroup>
         </EuiFlexItem>
+        <EuiFlexItem grow={false}>
+          <EuiFlexGroup gutterSize="xs" alignItems="center" responsive={false}>
+            <EuiFlexItem grow={false}>
+              <EuiSwitch
+                compressed
+                label="Disable animations"
+                checked={animationsDisabled}
+                onChange={(e) => setAnimationsUserPref(e.target.checked)}
+              />
+            </EuiFlexItem>
+            {isLargeGraph ? (
+              <EuiFlexItem grow={false}>
+                <EuiIconTip
+                  type="questionInCircle"
+                  color="subdued"
+                  content={
+                    'Animations are automatically disabled on large graphs to preserve performance. Toggle off to re-enable.'
+                  }
+                  aria-label="Why animations are disabled by default"
+                />
+              </EuiFlexItem>
+            ) : (
+              <EuiIcon type="empty" />
+            )}
+          </EuiFlexGroup>
+        </EuiFlexItem>
       </EuiFlexGroup>
       <EuiSpacer size="m" />
       <div ref={containerRef}>
@@ -191,6 +229,7 @@ export const TopologyView: React.FC<Props> = ({
               onNodeClick={handleNodeClick}
               selectedNodeId={selectedDevice}
               hiddenTypes={hiddenTypes}
+              animationsDisabled={animationsDisabled}
             />
           )}
         </EuiPanel>
