@@ -8,14 +8,18 @@
 
 /**
  * Large-scale SNMP topology generator with BGP/OSPF/ARP interconnections
- * Usage: node scripts/generate_scale_test_data.mjs [ES_HOST] [USER] [PASSWORD] [--devices=N]
+ * Usage: node scripts/generate_scale_test_data.mjs [ES_HOST] [USER] [PASSWORD] [--devices=N] [--density=sparse|medium|dense]
  *   --devices  Total device count (default: 1000, min: 10, max: 25600)
+ *   --density  Graph connectivity level: sparse (default), medium, or dense
  */
 import { parseArgs } from 'node:util';
 
 const { values: flags, positionals } = parseArgs({
   args: process.argv.slice(2),
-  options: { devices: { type: 'string', default: '1000' } },
+  options: {
+    devices: { type: 'string', default: '1000' },
+    density: { type: 'string', default: 'sparse' },
+  },
   allowPositionals: true,
 });
 
@@ -28,6 +32,21 @@ const DEVICE_COUNT = (() => {
     process.exit(1);
   }
   return n;
+})();
+
+const DENSITY_FRACTIONS = {
+  sparse: { routerToSwitch: 0.12, switchToServer: 0.2 },
+  medium: { routerToSwitch: 0.5, switchToServer: 0.5 },
+  dense: { routerToSwitch: 1.0, switchToServer: 1.0 },
+};
+
+const DENSITY = (() => {
+  const d = flags.density;
+  if (!DENSITY_FRACTIONS[d]) {
+    console.error(`Error: --density must be one of: sparse, medium, dense (got "${d}")`);
+    process.exit(1);
+  }
+  return DENSITY_FRACTIONS[d];
 })();
 
 const ES = positionals[0] || 'http://localhost:9200';
@@ -174,7 +193,10 @@ async function main() {
 
     // Router→Switch links
     for (const r of routers) {
-      for (const sw of switches.slice(0, Math.min(3, switches.length))) {
+      for (const sw of switches.slice(
+        0,
+        Math.max(1, Math.ceil(switches.length * DENSITY.routerToSwitch))
+      )) {
         docs.push({
           '@timestamp': ts,
           host: { name: r.name, ip: r.ip, mac: r.mac, type: r.type },
@@ -194,7 +216,10 @@ async function main() {
 
     // Switch→Server links
     for (const sw of switches) {
-      for (const srv of servers.slice(0, Math.min(5, servers.length))) {
+      for (const srv of servers.slice(
+        0,
+        Math.max(1, Math.ceil(servers.length * DENSITY.switchToServer))
+      )) {
         docs.push({
           '@timestamp': ts,
           host: { name: sw.name, ip: sw.ip, mac: sw.mac, type: sw.type },
