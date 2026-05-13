@@ -12,14 +12,14 @@
 
 import fs from 'fs';
 import path from 'path';
-
-const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
-
-const HEADER_PATH = path.join(REPO_ROOT, 'licenses', 'ELASTIC-LICENSE-2.0-HEADER.txt');
-const EXPECTED = fs.readFileSync(HEADER_PATH, 'utf8').trimEnd();
-
-const EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
-const SKIP_DIRS = new Set(['node_modules', '.git', 'target', 'build']);
+import {
+  EXPECTED_BLOCK_HEADER,
+  EXTENSIONS,
+  HASH_HEADER,
+  HASH_STYLE_EXTENSIONS,
+  REPO_ROOT,
+  SKIP_DIRS,
+} from './license_header_shared.mjs';
 
 const failures = [];
 
@@ -33,7 +33,8 @@ function walk(dir) {
       continue;
     }
     if (!entry.isFile()) continue;
-    if (!EXTENSIONS.has(path.extname(entry.name))) continue;
+    const ext = path.extname(entry.name);
+    if (!EXTENSIONS.has(ext) && !HASH_STYLE_EXTENSIONS.has(ext)) continue;
     checkFile(full);
   }
 }
@@ -46,12 +47,24 @@ function stripShebang(text) {
 
 function startsWithExpectedHeader(text) {
   const withoutShebang = stripShebang(text).replace(/^\uFEFF/, ''); // BOM
-  return withoutShebang.startsWith(EXPECTED + '\n');
+  return withoutShebang.startsWith(EXPECTED_BLOCK_HEADER + '\n');
+}
+
+function startsWithHashHeader(text) {
+  const withoutShebang = stripShebang(text).replace(/^\uFEFF/, '');
+  const t = withoutShebang.replace(/^\s+/, '');
+  if (!t.startsWith(HASH_HEADER)) return false;
+  const next = t.charAt(HASH_HEADER.length);
+  return next === '' || next === '\n' || next === '\r';
 }
 
 function checkFile(filePath) {
   const text = fs.readFileSync(filePath, 'utf8');
-  if (!startsWithExpectedHeader(text)) {
+  const ext = path.extname(filePath);
+  const ok = HASH_STYLE_EXTENSIONS.has(ext)
+    ? startsWithHashHeader(text)
+    : startsWithExpectedHeader(text);
+  if (!ok) {
     failures.push(path.relative(REPO_ROOT, filePath));
   }
 }
