@@ -310,6 +310,7 @@ export const TopologyCanvas: React.FC<Props> = ({
     // Static content: healthy links, all node fills + glyphs + labels, healthy node strokes.
     // Only repaints on layout / zoom / pan / hovered-node-change / selection-change.
     function drawBase() {
+      performance.mark('nt:drawBase:start');
       baseCtx.save();
       baseCtx.clearRect(0, 0, width, height);
       applyTransform(baseCtx);
@@ -397,11 +398,13 @@ export const TopologyCanvas: React.FC<Props> = ({
         }
       }
       baseCtx.restore();
+      performance.measure('nt:drawBase', 'nt:drawBase:start');
     }
 
     // Dynamic content: unhealthy strokes (pulsing), selection ring, hover tooltip.
     // rAF-driven when anyUnhealthy; otherwise only repainted on event.
     function drawOverlay() {
+      performance.mark('nt:drawOverlay:start');
       overlayCtx.save();
       overlayCtx.clearRect(0, 0, width, height);
       applyTransform(overlayCtx);
@@ -505,6 +508,7 @@ export const TopologyCanvas: React.FC<Props> = ({
         });
       }
       overlayCtx.restore();
+      performance.measure('nt:drawOverlay', 'nt:drawOverlay:start');
     }
 
     drawRef.current = () => {
@@ -625,6 +629,20 @@ export const TopologyCanvas: React.FC<Props> = ({
     baseCanvas.addEventListener('mouseup', onMouseUp);
     baseCanvas.addEventListener('click', onClick);
 
+    let eventObserver: PerformanceObserver | null = null;
+    try {
+      eventObserver = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (entry.duration <= 16) continue;
+          // eslint-disable-next-line no-console
+          console.warn(`[nt] slow ${entry.name}: ${entry.duration.toFixed(1)}ms input-to-paint`);
+        }
+      });
+      eventObserver.observe({ type: 'event' });
+    } catch {
+      // Event Timing API not supported in this browser
+    }
+
     return () => {
       drawRef.current = null;
       if (animFrame !== null) cancelAnimationFrame(animFrame);
@@ -635,6 +653,7 @@ export const TopologyCanvas: React.FC<Props> = ({
       // Clear d3-zoom listeners (wheel/mousedown/touchstart) installed via select(baseCanvas).call(zoomBehavior).
       // Without this, each re-render layers another zoom behavior on the canvas.
       select(baseCanvas).on('.zoom', null);
+      eventObserver?.disconnect();
     };
     // TODO: Revisit wether hiddenTypes should also be part of the deps array
     // eslint-disable-next-line react-hooks/exhaustive-deps
