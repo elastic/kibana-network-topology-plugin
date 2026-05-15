@@ -230,15 +230,6 @@ Document types written per SNMP poll cycle (one per device):
 
 ---
 
-## Roadmap
-
-- [ ] LLDP/CDP neighbor discovery (replaces ARP/MAC inference for supported devices)
-- [ ] Layout persistence via Saved Objects
-- [ ] WebGL renderer for 500+ node topologies
-- [ ] Syslog/NetFlow correlation in device detail
-- [ ] Kibana alerting integration (interface down, BGP session drop)
-- [ ] Custom Elastic Agent SNMP integration
-
 ## License
 
 Elastic License 2.0. See `LICENSE.txt`.
