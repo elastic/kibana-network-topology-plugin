@@ -20,14 +20,14 @@ A Kibana Observability plugin for **network monitoring and topology mapping**. C
 
 ## Target Version
 
-Kibana / Elasticsearch **8.19.12**
+Kibana / Elasticsearch **8.19.12+**
 
 ## Quick Start (Development)
 
 ### Prerequisites
 
 - Docker (4 GB+ RAM allocated)
-- Node.js **22.22.0** (match Kibana `v8.19.12` `.node-version`)
+- Node.js **22.22.0** (match Kibana `v8.19.12+` `.node-version`)
 - Yarn 1.x (classic)
 
 ### 1. Clone Kibana (separate checkout)
@@ -156,7 +156,7 @@ node scripts/generate_sample_data.mjs http://localhost:9200 elastic changeme
 
 ---
 
-## Building for Production
+## Deploying the plugin
 
 ### Build the plugin zip
 
@@ -169,7 +169,7 @@ Output: `build/networkTopology-8.19.12.zip`
 
 The zip is self-contained — all `@kbn/*` dependencies and the compiled frontend bundle are included.
 
-### Install on a production Kibana server
+### Install on a Kibana server
 
 ```bash
 bin/kibana-plugin install file:///absolute/path/to/networkTopology-8.19.12.zip
