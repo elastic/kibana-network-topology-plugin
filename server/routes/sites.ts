@@ -8,11 +8,13 @@
 import type { IRouter, Logger } from '@kbn/core/server';
 import { schema } from '@kbn/config-schema';
 import { API_ROUTES, DEFAULT_SNMP_INDEX, DEVICE_DOWN_THRESHOLD_MS } from '../../common';
+import { delegateAuthzToElasticsearch } from './route_security';
 
 export function registerSitesRoutes(router: IRouter, logger: Logger) {
   router.get(
     {
       path: API_ROUTES.SITES,
+      ...delegateAuthzToElasticsearch,
       validate: {
         query: schema.object({
           from: schema.string({ defaultValue: 'now-15m' }),
