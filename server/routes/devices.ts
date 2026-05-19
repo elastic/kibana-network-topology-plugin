@@ -9,12 +9,14 @@ import type { IRouter, Logger } from '@kbn/core/server';
 import { schema } from '@kbn/config-schema';
 import { buildEsQuery, type Filter, type Query } from '@kbn/es-query';
 import { API_ROUTES, DEFAULT_SNMP_INDEX, DEVICE_DOWN_THRESHOLD_MS } from '../../common';
+import { delegateAuthzToElasticsearch } from './route_security';
 
 export function registerDevicesRoutes(router: IRouter, logger: Logger) {
   // GET /api/network_topology/devices
   router.get(
     {
       path: API_ROUTES.DEVICES,
+      ...delegateAuthzToElasticsearch,
       validate: {
         query: schema.object({
           site: schema.maybe(schema.string()),
@@ -156,6 +158,7 @@ export function registerDevicesRoutes(router: IRouter, logger: Logger) {
   router.get(
     {
       path: `${API_ROUTES.DEVICE_DETAIL}/{id}`,
+      ...delegateAuthzToElasticsearch,
       validate: {
         params: schema.object({ id: schema.string() }),
         query: schema.object({

@@ -7,11 +7,13 @@
 
 import type { IRouter, Logger } from '@kbn/core/server';
 import { API_ROUTES, DEFAULT_SNMP_INDEX } from '../../common';
+import { delegateAuthzToElasticsearch } from './route_security';
 
 export function registerSetupRoutes(router: IRouter, logger: Logger) {
   router.get(
     {
       path: API_ROUTES.SETUP_HEALTH,
+      ...delegateAuthzToElasticsearch,
       validate: false,
     },
     async (context, _request, response) => {

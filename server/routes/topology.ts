@@ -9,11 +9,13 @@ import type { IRouter, Logger } from '@kbn/core/server';
 import { schema } from '@kbn/config-schema';
 import { API_ROUTES, DEFAULT_SNMP_INDEX } from '../../common';
 import { buildTopologyFromArpMac } from '../services/topology_builder';
+import { delegateAuthzToElasticsearch } from './route_security';
 
 export function registerTopologyRoutes(router: IRouter, logger: Logger) {
   router.get(
     {
       path: API_ROUTES.TOPOLOGY,
+      ...delegateAuthzToElasticsearch,
       validate: {
         query: schema.object({
           site: schema.maybe(schema.string()),
