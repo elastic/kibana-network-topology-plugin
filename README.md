@@ -24,7 +24,7 @@ A Kibana Observability plugin for **network monitoring and topology mapping**. C
 
 Kibana / Elasticsearch **8.19.12+** and **9.0.0+**
 
-> The same version of the plugin is compatible with all supported versions of Kibana. We don't distribute separate bundles for each stack version
+> A single version of the plugin is compatible with all supported versions of Kibana. We don't distribute separate bundles for each stack version.
 
 ### Installation Instructions
 
@@ -45,7 +45,7 @@ Kibana / Elasticsearch **8.19.12+** and **9.0.0+**
 git clone https://github.com/elastic/kibana.git
 cd kibana
 
-# If you want to use a specific version of kibana, check out it's tag. Otherwise you can continue from main
+# If you want to use a specific version of kibana, check out its tag. Otherwise you can continue from main
 git checkout v8.19.12
 ```
 
@@ -95,7 +95,7 @@ bin/kibana-plugin install file:///absolute/path/to/networkTopology-X.Y.Z.zip
 git clone https://github.com/elastic/kibana.git
 cd kibana
 
-# If you want to use a specific version of kibana, check out it's tag. Otherwise you can continue from main
+# If you want to use a specific version of kibana, check out its tag. Otherwise you can continue from main
 git checkout v8.19.12
 
 nvm use
@@ -127,11 +127,11 @@ cd /absolute/path/to/kibana
 yarn kbn bootstrap
 ```
 
-### 2. Start Elasticsearch (Docker)
+### 2. Start Elasticsearch
 
 ```bash
-# From the plugin's repo root
-docker compose -f docker-compose.dev.yml up -d
+# From the Kibana's repo root
+yarn es snapshot --license trial
 ```
 
 ### 3. Set up Elasticsearch resources + load sample data
@@ -148,26 +148,7 @@ node scripts/generate_sample_data.mjs
 > - Elasticsearch URL: `http://localhost:9200`
 > - credentials: `elastic / changeme`
 
-### 4. Configure Kibana to use local Elasticsearch
-
-Kibana must authenticate to Elasticsearch as a service user (not `elastic`). For local dev, set a password for `kibana_system` in the Docker container:
-
-```bash
-docker exec -it es-network-topology /usr/share/elasticsearch/bin/elasticsearch-reset-password -u kibana_system -i
-```
-
-Then configure Kibana (example `config/kibana.dev.yml`):
-
-```yaml
-elasticsearch:
-  hosts: http://localhost:9200
-  username: kibana_system
-  password: <the password you set above>
-  ssl:
-    verificationMode: none
-```
-
-### 5. Start Kibana + build the plugin UI bundle (two terminals)
+### 4. Start Kibana + build the plugin UI bundle (two terminals)
 
 Start Kibana in one terminal:
 
@@ -180,11 +161,10 @@ In a second terminal, build the plugin UI bundle in watch mode (this is required
 
 ```bash
 cd /absolute/path/to/kibana/plugins/networkTopology
-nvm use 22.22.0
 yarn dev --watch
 ```
 
-### 6. Open in browser
+### 5. Open in browser
 
 Navigate to **http://localhost:5601** → **Observability** → **Network Topology**
 
