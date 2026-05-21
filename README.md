@@ -85,8 +85,7 @@ bin/kibana-plugin install file:///absolute/path/to/networkTopology-X.Y.Z.zip
 
 ### Prerequisites
 
-- Docker (4 GB+ RAM allocated)
-- Node.js **22.22.0** (match Kibana `v8.19.12+ or v9.0.0+` `.node-version`)
+- Node.js (match Kibana `v8.19.12+ or v9.0.0+` `.node-version`)
 - Yarn 1.x (classic)
 
 ### 1. Clone Kibana (separate checkout)
@@ -137,6 +136,7 @@ yarn es snapshot --license trial
 ### 3. Set up Elasticsearch resources + load sample data
 
 ```bash
+# From the plugin's repo root
 chmod +x scripts/setup_elasticsearch.sh
 ./scripts/setup_elasticsearch.sh
 
