@@ -18,16 +18,74 @@ A Kibana Observability plugin for **network monitoring and topology mapping**. C
 - **Routing protocol monitoring** — BGP peer state, AS numbers, prefix counts, uptime; OSPF adjacency state, router ID, area, priority
 - **Elasticsearch ingest pipeline** — Auto-classifies device type and vendor from `sysDescr`
 
-## Target Version
+## Plugin Installation
 
-Kibana / Elasticsearch **8.19.12+**
+### Supported Versions
 
-## Quick Start (Development)
+Kibana / Elasticsearch **8.19.12+** and **9.0.0+**
+
+> A single version of the plugin is compatible with all supported versions of Kibana. We don't distribute separate bundles for each stack version.
+
+### Installation Instructions
+
+#### Pre-built bundle
+
+1. Download the latest version of the plugin from the [releases section](https://github.com/elastic/kibana-network-topology-plugin/releases)
+2. Un-zip the plugin bundle
+3. Open the `kibana.json` manifest file included in the plugin bundle. You'll find it under `kibana/networkTopology/kibana.json`
+4. Locate the `kibanaVersion` property and replace the placeholder value with your exact Kibana version. Save the file after the edit is done
+5. Re-zip the whole plugin bundle. Be sure to keep the `kibana/networkTopology` folder hierarchy as it was, otherwise installation will fail.
+6. Head over to your Kibana binaries. From the root of the Kibana folder run `bin/kibana-plugin install file:///absolute/path/to/networkTopology.zip`
+
+#### Building from source
+
+1. Clone Kibana
+
+```bash
+git clone https://github.com/elastic/kibana.git
+cd kibana
+
+# If you want to use a specific version of kibana, check out its tag. Otherwise you can continue from main
+git checkout v8.19.12
+```
+
+2. Clone the plugin into `kibana/plugins/`
+
+```bash
+cd plugins
+git clone git@github.com:elastic/kibana-network-topology-plugin.git networkTopology
+cd ..
+
+nvm use
+yarn kbn bootstrap
+```
+
+3. Build the plugin zip
+
+```bash
+cd plugins/networkTopology/
+yarn build --kibana-version X.Y.Z # This version should match the version you're using in Kibana
+```
+
+Output: `build/networkTopology-X.Y.Z.zip`
+
+The zip is self-contained — all `@kbn/*` dependencies and the compiled frontend bundle are included.
+
+4. Install on a Kibana server
+
+```bash
+cd /absolute/path/to/kibana/binaries
+bin/kibana-plugin install file:///absolute/path/to/networkTopology-X.Y.Z.zip
+# Restart Kibana after installation
+```
+
+> **Version matching**: The version in the zip must exactly match the target Kibana instance version. Rebuild from the matching Kibana source tree when upgrading.
+
+## Development Quick Start
 
 ### Prerequisites
 
-- Docker (4 GB+ RAM allocated)
-- Node.js **22.22.0** (match Kibana `v8.19.12+` `.node-version`)
+- Node.js (match Kibana `v8.19.12+ or v9.0.0+` `.node-version`)
 - Yarn 1.x (classic)
 
 ### 1. Clone Kibana (separate checkout)
@@ -35,6 +93,8 @@ Kibana / Elasticsearch **8.19.12+**
 ```bash
 git clone https://github.com/elastic/kibana.git
 cd kibana
+
+# If you want to use a specific version of kibana, check out its tag. Otherwise you can continue from main
 git checkout v8.19.12
 
 nvm use
@@ -66,16 +126,17 @@ cd /absolute/path/to/kibana
 yarn kbn bootstrap
 ```
 
-### 2. Start Elasticsearch (Docker)
+### 2. Start Elasticsearch
 
 ```bash
-# From the plugin's repo root
-docker compose -f docker-compose.dev.yml up -d
+# From the Kibana's repo root
+yarn es snapshot --license trial
 ```
 
 ### 3. Set up Elasticsearch resources + load sample data
 
 ```bash
+# From the plugin's repo root
 chmod +x scripts/setup_elasticsearch.sh
 ./scripts/setup_elasticsearch.sh
 
@@ -87,26 +148,7 @@ node scripts/generate_sample_data.mjs
 > - Elasticsearch URL: `http://localhost:9200`
 > - credentials: `elastic / changeme`
 
-### 4. Configure Kibana to use local Elasticsearch
-
-Kibana must authenticate to Elasticsearch as a service user (not `elastic`). For local dev, set a password for `kibana_system` in the Docker container:
-
-```bash
-docker exec -it es-network-topology /usr/share/elasticsearch/bin/elasticsearch-reset-password -u kibana_system -i
-```
-
-Then configure Kibana (example `config/kibana.dev.yml`):
-
-```yaml
-elasticsearch:
-  hosts: http://localhost:9200
-  username: kibana_system
-  password: <the password you set above>
-  ssl:
-    verificationMode: none
-```
-
-### 5. Start Kibana + build the plugin UI bundle (two terminals)
+### 4. Start Kibana + build the plugin UI bundle (two terminals)
 
 Start Kibana in one terminal:
 
@@ -119,11 +161,10 @@ In a second terminal, build the plugin UI bundle in watch mode (this is required
 
 ```bash
 cd /absolute/path/to/kibana/plugins/networkTopology
-nvm use 22.22.0
 yarn dev --watch
 ```
 
-### 6. Open in browser
+### 5. Open in browser
 
 Navigate to **http://localhost:5601** → **Observability** → **Network Topology**
 
@@ -153,30 +194,6 @@ The plugin health checks look for **recent** documents. If you loaded sample dat
 ```bash
 node scripts/generate_sample_data.mjs http://localhost:9200 elastic changeme
 ```
-
----
-
-## Deploying the plugin
-
-### Build the plugin zip
-
-```bash
-cd /absolute/path/to/kibana/plugins/networkTopology
-yarn build --kibana-version 8.19.12
-```
-
-Output: `build/networkTopology-8.19.12.zip`
-
-The zip is self-contained — all `@kbn/*` dependencies and the compiled frontend bundle are included.
-
-### Install on a Kibana server
-
-```bash
-bin/kibana-plugin install file:///absolute/path/to/networkTopology-8.19.12.zip
-# Restart Kibana after installation
-```
-
-> **Version matching**: The version in the zip must exactly match the target Kibana instance version. Rebuild from the matching Kibana source tree when upgrading.
 
 ---
 
