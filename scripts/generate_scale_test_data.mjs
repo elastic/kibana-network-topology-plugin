@@ -7,12 +7,51 @@
  */
 
 /**
- * Large-scale SNMP topology generator: 1000 nodes with BGP/OSPF/ARP interconnections
- * Usage: node scripts/generate_scale_test_data.mjs [ES_HOST] [USER] [PASSWORD]
+ * Large-scale SNMP topology generator with BGP/OSPF/ARP interconnections
+ * Usage: node scripts/generate_scale_test_data.mjs [ES_HOST] [USER] [PASSWORD] [--devices=N] [--density=sparse|medium|dense]
+ *   --devices  Total device count (default: 1000, min: 10, max: 25600)
+ *   --density  Graph connectivity level: sparse (default), medium, or dense
  */
-const ES = process.argv[2] || 'http://localhost:9200';
-const U = process.argv[3] || 'elastic';
-const P = process.argv[4] || 'changeme';
+import { parseArgs } from 'node:util';
+
+const { values: flags, positionals } = parseArgs({
+  args: process.argv.slice(2),
+  options: {
+    devices: { type: 'string', default: '1000' },
+    density: { type: 'string', default: 'sparse' },
+  },
+  allowPositionals: true,
+});
+
+const DEVICE_COUNT = (() => {
+  const n = Number(flags.devices);
+  if (!Number.isInteger(n) || n < 10 || n > 25600) {
+    console.error(
+      `Error: --devices must be an integer between 10 and 25600 (got "${flags.devices}")`
+    );
+    process.exit(1);
+  }
+  return n;
+})();
+
+const DENSITY_FRACTIONS = {
+  sparse: { routerToSwitch: 0.12, switchToServer: 0.2, firewallToRouter: 0.12 },
+  medium: { routerToSwitch: 0.5, switchToServer: 0.5, firewallToRouter: 0.5 },
+  dense: { routerToSwitch: 1.0, switchToServer: 1.0, firewallToRouter: 1.0 },
+};
+
+const DENSITY = (() => {
+  const d = flags.density;
+  if (!DENSITY_FRACTIONS[d]) {
+    console.error(`Error: --density must be one of: sparse, medium, dense (got "${d}")`);
+    process.exit(1);
+  }
+  return DENSITY_FRACTIONS[d];
+})();
+
+const ES = positionals[0] || 'http://localhost:9200';
+const U = positionals[1] || 'elastic';
+const P = positionals[2] || 'changeme';
 const IDX = 'logs-snmp.topology-default';
 const AUTH = Buffer.from(`${U}:${P}`).toString('base64');
 
@@ -44,19 +83,29 @@ const roleForDeviceIndex = (d) => {
   return 'access';
 };
 
-// Generate 1000 devices across 10 sites
-console.log('=== Generating 1000-node SNMP topology ===');
-const sites = [];
-const SITES_COUNT = 10;
+// Generate devices distributed across sites (100 devices/site, max 256 sites)
 const DEVICES_PER_SITE = 100;
+const MAX_SITES = 256;
+const SITES_COUNT = Math.ceil(DEVICE_COUNT / DEVICES_PER_SITE);
+if (SITES_COUNT > MAX_SITES) {
+  console.error(
+    `Error: ${DEVICE_COUNT} devices requires ${SITES_COUNT} sites, exceeding the max of ${MAX_SITES}`
+  );
+  process.exit(1);
+}
+const siteLabel = (s) => String.fromCharCode(65 + Math.floor(s / 26), 65 + (s % 26));
+console.log(`=== Generating ${DEVICE_COUNT}-node SNMP topology across ${SITES_COUNT} sites ===`);
+const sites = [];
 let globalDeviceId = 0;
 
 for (let s = 0; s < SITES_COUNT; s++) {
-  const siteName = `Region-${String.fromCharCode(65 + s)}`; // Region-A, Region-B, ...
+  const siteName = `Region-${siteLabel(s)}`;
   const siteDevices = [];
   const siteSubnet = `10.${s}`;
+  const devicesInSite =
+    s === SITES_COUNT - 1 ? DEVICE_COUNT - s * DEVICES_PER_SITE : DEVICES_PER_SITE;
 
-  for (let d = 0; d < DEVICES_PER_SITE; d++) {
+  for (let d = 0; d < devicesInSite; d++) {
     const type = pick(DEVICE_TYPES);
     const vendor = pick(VENDORS);
     const device = {
@@ -144,7 +193,10 @@ async function main() {
 
     // Router→Switch links
     for (const r of routers) {
-      for (const sw of switches.slice(0, Math.min(3, switches.length))) {
+      for (const sw of switches.slice(
+        0,
+        Math.max(1, Math.ceil(switches.length * DENSITY.routerToSwitch))
+      )) {
         docs.push({
           '@timestamp': ts,
           host: { name: r.name, ip: r.ip, mac: r.mac, type: r.type },
@@ -164,7 +216,10 @@ async function main() {
 
     // Switch→Server links
     for (const sw of switches) {
-      for (const srv of servers.slice(0, Math.min(5, servers.length))) {
+      for (const srv of servers.slice(
+        0,
+        Math.max(1, Math.ceil(servers.length * DENSITY.switchToServer))
+      )) {
         docs.push({
           '@timestamp': ts,
           host: { name: sw.name, ip: sw.ip, mac: sw.mac, type: sw.type },
@@ -178,6 +233,30 @@ async function main() {
           observer: { vendor: srv.vendor, sys_descr: srv.descr },
           network: { site: srv.site, building: srv.building, role: srv.role },
           arp: { ip_addr: sw.ip, mac_addr: sw.mac, interface_index: 1 },
+        });
+      }
+    }
+
+    // Firewall→Router links
+    const firewalls = site.devices.filter((d) => d.type === 'firewall');
+    for (const fw of firewalls) {
+      for (const r of routers.slice(
+        0,
+        Math.max(1, Math.ceil(routers.length * DENSITY.firewallToRouter))
+      )) {
+        docs.push({
+          '@timestamp': ts,
+          host: { name: fw.name, ip: fw.ip, mac: fw.mac, type: fw.type },
+          observer: { vendor: fw.vendor, sys_descr: fw.descr },
+          network: { site: fw.site, building: fw.building, role: fw.role },
+          arp: { ip_addr: r.ip, mac_addr: r.mac, interface_index: 1 },
+        });
+        docs.push({
+          '@timestamp': ts,
+          host: { name: r.name, ip: r.ip, mac: r.mac, type: r.type },
+          observer: { vendor: r.vendor, sys_descr: r.descr },
+          network: { site: r.site, building: r.building, role: r.role },
+          arp: { ip_addr: fw.ip, mac_addr: fw.mac, interface_index: 3 },
         });
       }
     }
