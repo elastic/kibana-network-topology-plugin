@@ -69,8 +69,6 @@ export const TopologyCanvasReactFlow: React.FC<Props> = ({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // RF still fires onNodeClick for non-selectable nodes, so
-  // `selectable: false` alone is NOT sufficient; this explicit guard is mandatory.
   const handleNodeClick = useCallback<NodeMouseHandler<Node<TopologyNodeData>>>((_event, node) => {
     if (node.data?.managed === false) return;
     setSelectedDeviceId(node.id);
@@ -171,6 +169,7 @@ export const TopologyCanvasReactFlow: React.FC<Props> = ({
           onEdgesChange={onEdgesChange}
           onNodeClick={handleNodeClick}
           nodesDraggable
+          selectNodesOnDrag={false}
           nodesConnectable={false}
           nodesFocusable
           edgesFocusable={false}

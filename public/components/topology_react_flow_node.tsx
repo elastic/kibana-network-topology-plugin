@@ -6,7 +6,13 @@
  */
 
 import React, { memo, useState } from 'react';
-import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
+import {
+  Handle,
+  Position,
+  useStore as useReactFlowStore,
+  type Node,
+  type NodeProps,
+} from '@xyflow/react';
 import {
   EuiDescriptionList,
   EuiFlexGroup,
@@ -29,13 +35,18 @@ const NODE_SIZE = 60;
 type TopologyDeviceNode = Node<TopologyNodeData, 'device'>;
 
 export const TopologyReactFlowNode = memo(
-  ({ data, selected, sourcePosition, targetPosition }: NodeProps<TopologyDeviceNode>) => {
+  ({ data, selected, sourcePosition, targetPosition, dragging }: NodeProps<TopologyDeviceNode>) => {
     const { euiTheme } = useEuiTheme();
 
     const [hovered, setHovered] = useState(false);
 
     const unmanaged = data.managed === false;
-    const isSelected = selected && !unmanaged; // unmanaged nodes are never selectable, so ignore selected state for them
+    // Suppress selected UI when multiple nodes are selected — the flyout only opens for single
+    // selections, so showing the ring on multi-select would be misleading.
+    const multipleNodesSelected = useReactFlowStore(
+      (s) => s.nodes.filter((n) => n.selected).length > 1
+    );
+    const isSelected = selected && !unmanaged && !multipleNodesSelected;
     const cfg = DEVICE_TYPE_CONFIG[data.type] ?? DEVICE_TYPE_CONFIG.unknown;
     const iconType = unmanaged ? 'question' : cfg.icon;
 
@@ -100,8 +111,10 @@ export const TopologyReactFlowNode = memo(
       </EuiFlexGroup>
     );
 
+    const cursor = dragging ? 'grabbing' : unmanaged ? 'inherit' : 'pointer';
+
     const wrapperStyles = css`
-      cursor: ${unmanaged ? 'default' : 'pointer'};
+      cursor: ${cursor};
     `;
 
     const handleStyles = css`
@@ -119,7 +132,7 @@ export const TopologyReactFlowNode = memo(
       display: flex;
       align-items: center;
       justify-content: center;
-      cursor: ${unmanaged ? 'default' : 'pointer'};
+      cursor: ${cursor};
       pointer-events: all;
       flex-shrink: 0;
     `;
@@ -135,69 +148,77 @@ export const TopologyReactFlowNode = memo(
       pointer-events: none;
     `;
 
+    const nodeBody = (
+      <EuiFlexGroup direction="column" alignItems="center" gutterSize="xs" responsive={false}>
+        <EuiFlexItem grow={false}>
+          <Handle
+            type="target"
+            position={targetPosition ?? Position.Top}
+            css={handleStyles}
+            isConnectable={false}
+          />
+
+          <div
+            css={circleStyles}
+            role="button"
+            tabIndex={0}
+            aria-label={ariaLabel}
+            aria-pressed={isSelected}
+          >
+            <EuiIcon type={iconType} color={iconColor} size="l" aria-hidden={true} />
+          </div>
+          <Handle
+            type="source"
+            position={sourcePosition ?? Position.Bottom}
+            css={handleStyles}
+            isConnectable={false}
+          />
+        </EuiFlexItem>
+        <EuiFlexItem grow={false} aria-hidden="true">
+          <EuiTextTruncate text={data.label} width={120}>
+            {(truncatedLabel) => (
+              <EuiTitle size="xs">
+                <p css={labelStyles}>
+                  <EuiTextColor color={selected || hovered ? 'default' : 'subdued'}>
+                    {truncatedLabel}
+                  </EuiTextColor>
+                </p>
+              </EuiTitle>
+            )}
+          </EuiTextTruncate>
+        </EuiFlexItem>
+        {data.ip && (
+          <EuiFlexItem grow={false} aria-hidden="true">
+            <EuiTextTruncate text={data.ip} width={120}>
+              {(truncatedIp) => (
+                <EuiText size="xs" textAlign="center">
+                  <p css={ipStyles}>{truncatedIp}</p>
+                </EuiText>
+              )}
+            </EuiTextTruncate>
+          </EuiFlexItem>
+        )}
+      </EuiFlexGroup>
+    );
+
     return (
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         css={wrapperStyles}
       >
-        <EuiToolTip
-          title={data.label}
-          content={tooltipContent}
-          position="right"
-          disableScreenReaderOutput
-        >
-          <EuiFlexGroup direction="column" alignItems="center" gutterSize="xs" responsive={false}>
-            <EuiFlexItem grow={false}>
-              <Handle
-                type="target"
-                position={targetPosition ?? Position.Top}
-                css={handleStyles}
-                isConnectable={false}
-              />
-
-              <div
-                css={circleStyles}
-                role="button"
-                tabIndex={0}
-                aria-label={ariaLabel}
-                aria-pressed={selected}
-              >
-                <EuiIcon type={iconType} color={iconColor} size="l" aria-hidden={true} />
-              </div>
-              <Handle
-                type="source"
-                position={sourcePosition ?? Position.Bottom}
-                css={handleStyles}
-                isConnectable={false}
-              />
-            </EuiFlexItem>
-            <EuiFlexItem grow={false} aria-hidden="true">
-              <EuiTextTruncate text={data.label} width={120}>
-                {(truncatedLabel) => (
-                  <EuiTitle size="xs">
-                    <p css={labelStyles}>
-                      <EuiTextColor color={selected || hovered ? 'default' : 'subdued'}>
-                        {truncatedLabel}
-                      </EuiTextColor>
-                    </p>
-                  </EuiTitle>
-                )}
-              </EuiTextTruncate>
-            </EuiFlexItem>
-            {data.ip && (
-              <EuiFlexItem grow={false} aria-hidden="true">
-                <EuiTextTruncate text={data.ip} width={120}>
-                  {(truncatedIp) => (
-                    <EuiText size="xs" textAlign="center">
-                      <p css={ipStyles}>{truncatedIp}</p>
-                    </EuiText>
-                  )}
-                </EuiTextTruncate>
-              </EuiFlexItem>
-            )}
-          </EuiFlexGroup>
-        </EuiToolTip>
+        {dragging ? (
+          nodeBody
+        ) : (
+          <EuiToolTip
+            title={data.label}
+            content={tooltipContent}
+            position="right"
+            disableScreenReaderOutput
+          >
+            {nodeBody}
+          </EuiToolTip>
+        )}
       </div>
     );
   }
