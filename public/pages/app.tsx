@@ -162,7 +162,16 @@ export const NetworkTopologyApp: React.FC = () => {
             refreshKey={refreshKey}
           />
         )}
-        {viewMode === 'topology2' && <TopologyCanvasReactFlow />}
+        {viewMode === 'topology2' && (
+          <TopologyCanvasReactFlow
+            site={scope.site}
+            cidr={scope.cidr}
+            onBackToOverview={handleBackToOverview}
+            from={start}
+            to={end}
+            refreshKey={refreshKey}
+          />
+        )}
         {viewMode === 'devices' && (
           <DeviceListView site={scope.site} from={start} to={end} refreshKey={refreshKey} />
         )}

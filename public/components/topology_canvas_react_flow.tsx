@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -15,6 +15,7 @@ import {
   type Node,
   type Edge,
   type NodeTypes,
+  type NodeMouseHandler,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
@@ -31,6 +32,7 @@ import { useApi } from '../hooks/use_api';
 import type { TopologyEdgeData, TopologyNodeData } from '../utils/graph_to_react_flow';
 import { graphToReactFlow } from '../utils/graph_to_react_flow';
 import { TopologyReactFlowNode } from './topology_react_flow_node';
+import { DeviceFlyout } from './device_flyout';
 
 // Defined outside the component so the reference is stable across renders —
 // passing an inline object to nodeTypes would cause React Flow to remount nodes every render.
@@ -38,10 +40,19 @@ const nodeTypes: NodeTypes = {
   device: TopologyReactFlowNode,
 };
 
-export const TopologyCanvasReactFlow: React.FC<any> = ({
+interface Props {
+  site?: string;
+  cidr?: string;
+  onBackToOverview: () => void;
+  from: string;
+  to: string;
+  refreshKey: number;
+}
+
+export const TopologyCanvasReactFlow: React.FC<Props> = ({
   site,
   cidr,
-  onBackToOverview,
+  onBackToOverview: _onBackToOverview,
   from,
   to,
   refreshKey,
@@ -51,11 +62,34 @@ export const TopologyCanvasReactFlow: React.FC<any> = ({
   const [graph, setGraph] = useState<TopologyGraph | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<TopologyNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge<TopologyEdgeData>>([]);
 
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // RF still fires onNodeClick for non-selectable nodes, so
+  // `selectable: false` alone is NOT sufficient; this explicit guard is mandatory.
+  const handleNodeClick = useCallback<NodeMouseHandler<Node<TopologyNodeData>>>((_event, node) => {
+    if (node.data?.managed === false) return;
+    setSelectedDeviceId(node.id);
+  }, []);
+
+  const handleCloseFlyout = useCallback(() => setSelectedDeviceId(null), []);
+
+  // Keep RF's internal `selected` flag in sync with our state so the highlight always matches
+  // the open flyout and survives RF's own selection attempts. The identity short-circuit
+  // (`n.selected === expected ? n : {...n}`) avoids churning node refs when nothing changed,
+  // which keeps the node component's `memo` effective.
+  useEffect(() => {
+    setNodes((nds) =>
+      nds.map((n) => {
+        const expected = n.id === selectedDeviceId;
+        return n.selected === expected ? n : { ...n, selected: expected };
+      })
+    );
+  }, [selectedDeviceId, setNodes]);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +122,11 @@ export const TopologyCanvasReactFlow: React.FC<any> = ({
       );
       setNodes(reactFlowNodes);
       setEdges(reactFlowEdges);
+      // Preserve selection across data refreshes — keep the flyout open if the selected device
+      // still exists as a managed node; clear it if it has disappeared from the new graph.
+      setSelectedDeviceId((prev) =>
+        prev && reactFlowNodes.some((n) => n.id === prev && n.data.managed !== false) ? prev : null
+      );
     }
   }, [graph, setNodes, setEdges]);
 
@@ -114,30 +153,36 @@ export const TopologyCanvasReactFlow: React.FC<any> = ({
   if (!graph) return null;
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        height: '100%',
-        width: '100%',
-      }}
-    >
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        colorMode={colorMode.toLowerCase() as 'light' | 'dark'}
-        fitView
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        nodesDraggable
-        nodesConnectable={false}
-        nodesFocusable
-        edgesFocusable={false}
-        proOptions={{ hideAttribution: true }}
+    <>
+      <div
+        ref={containerRef}
+        style={{
+          height: '100%',
+          width: '100%',
+        }}
       >
-        <Background />
-        <Controls />
-      </ReactFlow>
-    </div>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          colorMode={colorMode.toLowerCase() as 'light' | 'dark'}
+          fitView
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeClick={handleNodeClick}
+          nodesDraggable
+          nodesConnectable={false}
+          nodesFocusable
+          edgesFocusable={false}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background />
+          <Controls />
+        </ReactFlow>
+      </div>
+      {selectedDeviceId && (
+        <DeviceFlyout deviceId={selectedDeviceId} from={from} to={to} onClose={handleCloseFlyout} />
+      )}
+    </>
   );
 };
