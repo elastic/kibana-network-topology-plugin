@@ -16,6 +16,8 @@ export interface TopologyNodeData extends Record<string, unknown> {
   site?: string;
   role?: TopologyNode['role'];
   managed?: boolean;
+  /** Discovery method — only set when managed === false. BGP > OSPF > ARP precedence. */
+  discovery?: 'bgp' | 'ospf' | 'arp';
 }
 
 export interface TopologyEdgeData extends Record<string, unknown> {
@@ -120,6 +122,20 @@ export const graphToReactFlow = (
 ): { nodes: Array<Node<TopologyNodeData>>; edges: Array<Edge<TopologyEdgeData>> } => {
   const { nodes: topoNodes, links: topoLinks } = graph;
 
+  // Derive per-node discovery method from links (BGP > OSPF > ARP precedence).
+  // Computed once here so the node component doesn't need access to the edge list.
+  const bgpNodeIds = new Set<string>();
+  const ospfNodeIds = new Set<string>();
+  for (const l of topoLinks) {
+    if (l.method === 'bgp') {
+      bgpNodeIds.add(l.source);
+      bgpNodeIds.add(l.target);
+    } else if (l.method === 'ospf') {
+      ospfNodeIds.add(l.source);
+      ospfNodeIds.add(l.target);
+    }
+  }
+
   const positions = computeLayout(topoNodes, topoLinks, width, height);
 
   const nodes: Array<Node<TopologyNodeData>> = topoNodes.map((n) => ({
@@ -137,6 +153,14 @@ export const graphToReactFlow = (
       site: n.site,
       role: n.role,
       managed: n.managed,
+      discovery:
+        n.managed === false
+          ? bgpNodeIds.has(n.id)
+            ? 'bgp'
+            : ospfNodeIds.has(n.id)
+            ? 'ospf'
+            : 'arp'
+          : undefined,
     },
     selectable: n.managed,
   }));

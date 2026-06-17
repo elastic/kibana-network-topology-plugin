@@ -8,17 +8,20 @@
 import React, { memo, useState } from 'react';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import {
+  EuiDescriptionList,
   EuiFlexGroup,
   EuiFlexItem,
+  EuiHealth,
   EuiIcon,
   EuiText,
   EuiTextColor,
   EuiTextTruncate,
   EuiTitle,
+  EuiToolTip,
   useEuiTheme,
 } from '@elastic/eui';
 import { css } from '@emotion/react';
-import { DEVICE_TYPE_CONFIG } from '../../common';
+import { DEVICE_TYPE_CONFIG, STATUS_EUI_COLORS } from '../../common';
 import type { TopologyNodeData } from '../utils/graph_to_react_flow';
 
 const NODE_SIZE = 60; // diameter in px
@@ -63,8 +66,38 @@ export const TopologyReactFlowNode = memo(
     const boxShadow = selected ? `0 0 0 4px ${cfg.color}80` : 'none';
 
     const ariaLabel = `${data.type} device: ${data.label}, status: ${data.status}${
-      unmanaged ? ', unmanaged' : ''
+      unmanaged && data.discovery ? `, unmanaged (${data.discovery.toUpperCase()}-discovered)` : ''
     }`;
+
+    const tooltipContent = (
+      <EuiFlexGroup direction="column" gutterSize="s">
+        <EuiFlexItem>
+          <EuiDescriptionList
+            type="column"
+            compressed
+            listItems={[
+              {
+                title: 'Status',
+                description: (
+                  <EuiHealth color={STATUS_EUI_COLORS[data.status] ?? 'subdued'}>
+                    {data.status}
+                  </EuiHealth>
+                ),
+              },
+              { title: 'IP', description: data.ip || '—' },
+              { title: 'Type', description: data.type },
+            ]}
+          />
+        </EuiFlexItem>
+        {unmanaged && data.discovery && (
+          <EuiFlexItem>
+            <EuiText size="xs" color="subdued">
+              Unmanaged ({data.discovery.toUpperCase()}-discovered)
+            </EuiText>
+          </EuiFlexItem>
+        )}
+      </EuiFlexGroup>
+    );
 
     const handleStyles = css`
       visibility: hidden;
@@ -106,17 +139,24 @@ export const TopologyReactFlowNode = memo(
             css={handleStyles}
             isConnectable={false}
           />
-          <div
-            css={circleStyles}
-            role="button"
-            tabIndex={0}
-            aria-label={ariaLabel}
-            aria-pressed={selected}
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
+          <EuiToolTip
+            title={data.label}
+            content={tooltipContent}
+            position="right"
+            disableScreenReaderOutput
           >
-            <EuiIcon type={iconType} color={iconColor} size="l" aria-hidden={true} />
-          </div>
+            <div
+              css={circleStyles}
+              role="button"
+              tabIndex={0}
+              aria-label={ariaLabel}
+              aria-pressed={selected}
+              onMouseEnter={() => setHovered(true)}
+              onMouseLeave={() => setHovered(false)}
+            >
+              <EuiIcon type={iconType} color={iconColor} size="l" aria-hidden={true} />
+            </div>
+          </EuiToolTip>
           <Handle
             type="source"
             position={sourcePosition ?? Position.Bottom}
