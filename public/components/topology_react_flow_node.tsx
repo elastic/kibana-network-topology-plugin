@@ -24,7 +24,7 @@ import { css } from '@emotion/react';
 import { DEVICE_TYPE_CONFIG, STATUS_EUI_COLORS } from '../../common';
 import type { TopologyNodeData } from '../utils/graph_to_react_flow';
 
-const NODE_SIZE = 60; // diameter in px
+const NODE_SIZE = 60;
 
 type TopologyDeviceNode = Node<TopologyNodeData, 'device'>;
 
@@ -57,13 +57,13 @@ export const TopologyReactFlowNode = memo(
       )[data.status] ?? euiTheme.colors.textSubdued;
 
     // Border: primary ring when selected (idiomatic EUI selection), status color otherwise.
-    // Unmanaged nodes always get a dashed border (canvas parity: setLineDash([4,3])).
+    // Unmanaged nodes always get a dashed border
     const borderStyle = unmanaged ? 'dashed' : 'solid';
     const borderWidth = isSelected ? 4 : 3;
     const borderColor = isSelected ? euiTheme.colors.primary : statusBorderColor;
 
     // Outer halo ring uses the node's type color (fixed — this is the "identity" of the device).
-    // 8-digit hex suffix = ~50% alpha (matches the canvas overlay halo at alpha 0.5).
+    // 8-digit hex suffix = ~50% alpha
     const boxShadow = isSelected ? `0 0 0 4px ${cfg.color}80` : 'none';
 
     const ariaLabel = `${data.type} device: ${data.label}, status: ${data.status}${
