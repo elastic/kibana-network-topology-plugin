@@ -141,10 +141,7 @@ export const graphToReactFlow = (
   const nodes: Array<Node<TopologyNodeData>> = topoNodes.map((n) => ({
     id: n.id,
     type: 'device',
-    position:
-      n.x !== undefined && n.y !== undefined
-        ? { x: n.x, y: n.y }
-        : positions.get(n.id) ?? { x: 0, y: 0 },
+    position: positions.get(n.id) ?? { x: 0, y: 0 },
     data: {
       label: n.label,
       ip: n.ip,

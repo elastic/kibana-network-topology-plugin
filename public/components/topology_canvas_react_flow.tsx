@@ -31,6 +31,11 @@ import type { TopologyGraph } from '../../common';
 import { useApi } from '../hooks/use_api';
 import type { TopologyEdgeData, TopologyNodeData } from '../utils/graph_to_react_flow';
 import { graphToReactFlow } from '../utils/graph_to_react_flow';
+import {
+  recordDragOverrides,
+  applyDragOverrides,
+  type DragOverrides,
+} from '../utils/drag_overrides';
 import { TopologyReactFlowNode } from './topology_react_flow_node';
 import { DeviceFlyout } from './device_flyout';
 
@@ -68,6 +73,8 @@ export const TopologyCanvasReactFlow: React.FC<Props> = ({
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge<TopologyEdgeData>>([]);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  // Stores positions the operator has manually dragged — survive data refreshes
+  const dragOverridesRef = useRef<DragOverrides>(new Map());
 
   const handleNodeClick = useCallback<NodeMouseHandler<Node<TopologyNodeData>>>((_event, node) => {
     if (node.data?.managed === false) return;
@@ -75,6 +82,16 @@ export const TopologyCanvasReactFlow: React.FC<Props> = ({
   }, []);
 
   const handleCloseFlyout = useCallback(() => setSelectedDeviceId(null), []);
+
+  // Wraps RF's onNodesChange to capture terminal drag positions into the ref
+  // before delegating — keeps live-drag rendering intact via the passthrough.
+  const handleNodesChange = useCallback<typeof onNodesChange>(
+    (changes) => {
+      recordDragOverrides(changes, dragOverridesRef.current);
+      onNodesChange(changes);
+    },
+    [onNodesChange]
+  );
 
   // Keep RF's internal `selected` flag in sync with our state so the highlight always matches
   // the open flyout and survives RF's own selection attempts. The identity short-circuit
@@ -118,7 +135,7 @@ export const TopologyCanvasReactFlow: React.FC<Props> = ({
         containerRef.current?.clientWidth,
         containerRef.current?.clientHeight
       );
-      setNodes(reactFlowNodes);
+      setNodes(applyDragOverrides(reactFlowNodes, dragOverridesRef.current));
       setEdges(reactFlowEdges);
       // Preserve selection across data refreshes — keep the flyout open if the selected device
       // still exists as a managed node; clear it if it has disappeared from the new graph.
@@ -165,7 +182,7 @@ export const TopologyCanvasReactFlow: React.FC<Props> = ({
           nodeTypes={nodeTypes}
           colorMode={colorMode.toLowerCase() as 'light' | 'dark'}
           fitView
-          onNodesChange={onNodesChange}
+          onNodesChange={handleNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeClick={handleNodeClick}
           nodesDraggable
