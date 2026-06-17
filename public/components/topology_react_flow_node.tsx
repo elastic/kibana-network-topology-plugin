@@ -35,6 +35,7 @@ export const TopologyReactFlowNode = memo(
     const [hovered, setHovered] = useState(false);
 
     const unmanaged = data.managed === false;
+    const isSelected = selected && !unmanaged; // unmanaged nodes are never selectable, so ignore selected state for them
     const cfg = DEVICE_TYPE_CONFIG[data.type] ?? DEVICE_TYPE_CONFIG.unknown;
     const iconType = unmanaged ? 'question' : cfg.icon;
 
@@ -58,12 +59,12 @@ export const TopologyReactFlowNode = memo(
     // Border: primary ring when selected (idiomatic EUI selection), status color otherwise.
     // Unmanaged nodes always get a dashed border (canvas parity: setLineDash([4,3])).
     const borderStyle = unmanaged ? 'dashed' : 'solid';
-    const borderWidth = selected ? 4 : 3;
-    const borderColor = selected ? euiTheme.colors.primary : statusBorderColor;
+    const borderWidth = isSelected ? 4 : 3;
+    const borderColor = isSelected ? euiTheme.colors.primary : statusBorderColor;
 
     // Outer halo ring uses the node's type color (fixed — this is the "identity" of the device).
     // 8-digit hex suffix = ~50% alpha (matches the canvas overlay halo at alpha 0.5).
-    const boxShadow = selected ? `0 0 0 4px ${cfg.color}80` : 'none';
+    const boxShadow = isSelected ? `0 0 0 4px ${cfg.color}80` : 'none';
 
     const ariaLabel = `${data.type} device: ${data.label}, status: ${data.status}${
       unmanaged && data.discovery ? `, unmanaged (${data.discovery.toUpperCase()}-discovered)` : ''
@@ -99,6 +100,10 @@ export const TopologyReactFlowNode = memo(
       </EuiFlexGroup>
     );
 
+    const wrapperStyles = css`
+      cursor: ${unmanaged ? 'default' : 'pointer'};
+    `;
+
     const handleStyles = css`
       visibility: hidden;
     `;
@@ -131,64 +136,69 @@ export const TopologyReactFlowNode = memo(
     `;
 
     return (
-      <EuiFlexGroup direction="column" alignItems="center" gutterSize="xs" responsive={false}>
-        <EuiFlexItem grow={false}>
-          <Handle
-            type="target"
-            position={targetPosition ?? Position.Top}
-            css={handleStyles}
-            isConnectable={false}
-          />
-          <EuiToolTip
-            title={data.label}
-            content={tooltipContent}
-            position="right"
-            disableScreenReaderOutput
-          >
-            <div
-              css={circleStyles}
-              role="button"
-              tabIndex={0}
-              aria-label={ariaLabel}
-              aria-pressed={selected}
-              onMouseEnter={() => setHovered(true)}
-              onMouseLeave={() => setHovered(false)}
-            >
-              <EuiIcon type={iconType} color={iconColor} size="l" aria-hidden={true} />
-            </div>
-          </EuiToolTip>
-          <Handle
-            type="source"
-            position={sourcePosition ?? Position.Bottom}
-            css={handleStyles}
-            isConnectable={false}
-          />
-        </EuiFlexItem>
-        <EuiFlexItem grow={false} aria-hidden="true">
-          <EuiTextTruncate text={data.label} width={120}>
-            {(truncatedLabel) => (
-              <EuiTitle size="xs">
-                <p css={labelStyles}>
-                  <EuiTextColor color={selected || hovered ? 'default' : 'subdued'}>
-                    {truncatedLabel}
-                  </EuiTextColor>
-                </p>
-              </EuiTitle>
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        css={wrapperStyles}
+      >
+        <EuiToolTip
+          title={data.label}
+          content={tooltipContent}
+          position="right"
+          disableScreenReaderOutput
+        >
+          <EuiFlexGroup direction="column" alignItems="center" gutterSize="xs" responsive={false}>
+            <EuiFlexItem grow={false}>
+              <Handle
+                type="target"
+                position={targetPosition ?? Position.Top}
+                css={handleStyles}
+                isConnectable={false}
+              />
+
+              <div
+                css={circleStyles}
+                role="button"
+                tabIndex={0}
+                aria-label={ariaLabel}
+                aria-pressed={selected}
+              >
+                <EuiIcon type={iconType} color={iconColor} size="l" aria-hidden={true} />
+              </div>
+              <Handle
+                type="source"
+                position={sourcePosition ?? Position.Bottom}
+                css={handleStyles}
+                isConnectable={false}
+              />
+            </EuiFlexItem>
+            <EuiFlexItem grow={false} aria-hidden="true">
+              <EuiTextTruncate text={data.label} width={120}>
+                {(truncatedLabel) => (
+                  <EuiTitle size="xs">
+                    <p css={labelStyles}>
+                      <EuiTextColor color={selected || hovered ? 'default' : 'subdued'}>
+                        {truncatedLabel}
+                      </EuiTextColor>
+                    </p>
+                  </EuiTitle>
+                )}
+              </EuiTextTruncate>
+            </EuiFlexItem>
+            {data.ip && (
+              <EuiFlexItem grow={false} aria-hidden="true">
+                <EuiTextTruncate text={data.ip} width={120}>
+                  {(truncatedIp) => (
+                    <EuiText size="xs" textAlign="center">
+                      <p css={ipStyles}>{truncatedIp}</p>
+                    </EuiText>
+                  )}
+                </EuiTextTruncate>
+              </EuiFlexItem>
             )}
-          </EuiTextTruncate>
-        </EuiFlexItem>
-        {data.ip && (
-          <EuiFlexItem grow={false} aria-hidden="true">
-            <EuiTextTruncate text={data.ip} width={120}>
-              {(truncatedIp) => (
-                <EuiText size="xs" textAlign="center">
-                  <p css={ipStyles}>{truncatedIp}</p>
-                </EuiText>
-              )}
-            </EuiTextTruncate>
-          </EuiFlexItem>
-        )}
-      </EuiFlexGroup>
+          </EuiFlexGroup>
+        </EuiToolTip>
+      </div>
     );
   }
 );

@@ -162,7 +162,6 @@ export const graphToReactFlow = (
             : 'arp'
           : undefined,
     },
-    selectable: n.managed,
   }));
 
   const edges: Array<Edge<TopologyEdgeData>> = topoLinks.map((l) => ({
