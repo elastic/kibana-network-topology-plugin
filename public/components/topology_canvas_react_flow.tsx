@@ -8,10 +8,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   Controls,
+  ControlButton,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   type Node,
   type Edge,
   type NodeTypes,
@@ -22,6 +25,7 @@ import {
   EuiCallOut,
   EuiFlexGroup,
   EuiFlexItem,
+  EuiIcon,
   EuiLoadingSpinner,
   EuiSpacer,
   EuiText,
@@ -54,7 +58,7 @@ interface Props {
   refreshKey: number;
 }
 
-export const TopologyCanvasReactFlow: React.FC<Props> = ({
+const TopologyCanvasReactFlowInner: React.FC<Props> = ({
   site,
   cidr,
   onBackToOverview: _onBackToOverview,
@@ -64,6 +68,7 @@ export const TopologyCanvasReactFlow: React.FC<Props> = ({
 }) => {
   const api = useApi();
   const { colorMode } = useEuiTheme();
+  const { fitView } = useReactFlow();
   const [graph, setGraph] = useState<TopologyGraph | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +97,25 @@ export const TopologyCanvasReactFlow: React.FC<Props> = ({
     },
     [onNodesChange]
   );
+
+  // Clears all drag overrides, re-runs the layout algorithm at the current canvas
+  // size (so window resizes are reflected), and re-fits the viewport.
+  const handleResetLayout = useCallback(() => {
+    if (!graph) return;
+    dragOverridesRef.current.clear();
+    const { nodes: relaidOut } = graphToReactFlow(
+      graph,
+      containerRef.current?.clientWidth,
+      containerRef.current?.clientHeight
+    );
+    // Re-apply the selection highlight: relaidOut nodes carry no `selected` flag
+    // and the selection effect won't re-fire (selectedDeviceId is unchanged).
+    setNodes(relaidOut.map((n) => (n.id === selectedDeviceId ? { ...n, selected: true } : n)));
+    // Defer fitView until after the new positions commit to the DOM.
+    window.requestAnimationFrame(() => {
+      void fitView();
+    });
+  }, [graph, selectedDeviceId, setNodes, fitView]);
 
   // Keep RF's internal `selected` flag in sync with our state so the highlight always matches
   // the open flyout and survives RF's own selection attempts. The identity short-circuit
@@ -193,7 +217,15 @@ export const TopologyCanvasReactFlow: React.FC<Props> = ({
           proOptions={{ hideAttribution: true }}
         >
           <Background />
-          <Controls />
+          <Controls showInteractive={false}>
+            <ControlButton
+              onClick={handleResetLayout}
+              title="Reset Layout"
+              aria-label="Reset Layout"
+            >
+              <EuiIcon type="refresh" aria-hidden={true} />
+            </ControlButton>
+          </Controls>
         </ReactFlow>
       </div>
       {selectedDeviceId && (
@@ -202,3 +234,9 @@ export const TopologyCanvasReactFlow: React.FC<Props> = ({
     </>
   );
 };
+
+export const TopologyCanvasReactFlow: React.FC<Props> = (props) => (
+  <ReactFlowProvider>
+    <TopologyCanvasReactFlowInner {...props} />
+  </ReactFlowProvider>
+);
