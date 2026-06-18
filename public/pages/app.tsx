@@ -41,12 +41,12 @@ export const NetworkTopologyApp: React.FC = () => {
 
   const handleSiteClick = useCallback((site: string) => {
     setScope({ site });
-    setViewMode('topology');
+    setViewMode('topology2');
   }, []);
 
   const handleSegmentClick = useCallback((cidr: string) => {
     setScope({ cidr });
-    setViewMode('topology');
+    setViewMode('topology2');
   }, []);
 
   const handleBackToOverview = useCallback(() => {

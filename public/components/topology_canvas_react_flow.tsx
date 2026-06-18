@@ -23,6 +23,8 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
+  EuiBadge,
+  EuiButtonEmpty,
   EuiCallOut,
   EuiFlexGroup,
   EuiFlexItem,
@@ -67,7 +69,7 @@ interface Props {
 const TopologyCanvasReactFlowInner: React.FC<Props> = ({
   site,
   cidr,
-  onBackToOverview: _onBackToOverview,
+  onBackToOverview,
   from,
   to,
   refreshKey,
@@ -199,42 +201,72 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
 
   return (
     <>
-      <div
-        ref={containerRef}
-        style={{
-          height: '100%',
-          width: '100%',
-        }}
-      >
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          colorMode={colorMode.toLowerCase() as 'light' | 'dark'}
-          fitView
-          onNodesChange={handleNodesChange}
-          onEdgesChange={onEdgesChange}
-          onNodeClick={handleNodeClick}
-          nodesDraggable
-          selectNodesOnDrag={false}
-          nodesConnectable={false}
-          nodesFocusable
-          edgesFocusable={false}
-          proOptions={{ hideAttribution: true }}
+      <EuiFlexGroup direction="column" gutterSize="s">
+        <EuiFlexGroup alignItems="center">
+          <EuiFlexItem grow={false}>
+            <EuiButtonEmpty iconType="arrowLeft" onClick={onBackToOverview}>
+              All Sites
+            </EuiButtonEmpty>
+          </EuiFlexItem>
+          {site && (
+            <EuiFlexItem grow={false}>
+              <EuiBadge color="hollow">{site}</EuiBadge>
+            </EuiFlexItem>
+          )}
+          {cidr && (
+            <EuiFlexItem grow={false}>
+              <EuiBadge color="hollow" style={{ fontFamily: 'monospace' }}>
+                {cidr}
+              </EuiBadge>
+            </EuiFlexItem>
+          )}
+          <EuiFlexItem grow={false}>
+            <EuiText size="s" color="subdued">
+              {graph.nodes.filter((n) => n.managed !== false).length} devices
+              {graph.nodes.some((n) => n.managed === false) &&
+                ` · ${graph.nodes.filter((n) => n.managed === false).length} discovered`}
+              {' · '}
+              {graph.links.length} links
+            </EuiText>
+          </EuiFlexItem>
+        </EuiFlexGroup>
+        <div
+          ref={containerRef}
+          style={{
+            height: '100%',
+            width: '100%',
+          }}
         >
-          <Background />
-          <Controls showInteractive={false}>
-            <ControlButton
-              onClick={handleResetLayout}
-              title="Reset Layout"
-              aria-label="Reset Layout"
-            >
-              <EuiIcon type="refresh" aria-hidden={true} />
-            </ControlButton>
-          </Controls>
-        </ReactFlow>
-      </div>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            colorMode={colorMode.toLowerCase() as 'light' | 'dark'}
+            fitView
+            onNodesChange={handleNodesChange}
+            onEdgesChange={onEdgesChange}
+            onNodeClick={handleNodeClick}
+            nodesDraggable
+            selectNodesOnDrag={false}
+            nodesConnectable={false}
+            nodesFocusable
+            edgesFocusable={false}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background />
+            <Controls showInteractive={false}>
+              <ControlButton
+                onClick={handleResetLayout}
+                title="Reset Layout"
+                aria-label="Reset Layout"
+              >
+                <EuiIcon type="refresh" aria-hidden={true} />
+              </ControlButton>
+            </Controls>
+          </ReactFlow>
+        </div>
+      </EuiFlexGroup>
       {selectedDeviceId && (
         <DeviceFlyout deviceId={selectedDeviceId} from={from} to={to} onClose={handleCloseFlyout} />
       )}
