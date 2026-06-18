@@ -17,6 +17,7 @@ import {
   useReactFlow,
   type Node,
   type Edge,
+  type EdgeTypes,
   type NodeTypes,
   type NodeMouseHandler,
 } from '@xyflow/react';
@@ -40,13 +41,18 @@ import {
   applyDragOverrides,
   type DragOverrides,
 } from '../utils/drag_overrides';
+import { TopologyReactFlowEdge } from './topology_react_flow_edge';
 import { TopologyReactFlowNode } from './topology_react_flow_node';
 import { DeviceFlyout } from './device_flyout';
 
-// Defined outside the component so the reference is stable across renders —
-// passing an inline object to nodeTypes would cause React Flow to remount nodes every render.
+// Defined outside the component so the references are stable across renders —
+// passing inline objects to nodeTypes/edgeTypes would cause React Flow to remount on every render.
 const nodeTypes: NodeTypes = {
   device: TopologyReactFlowNode,
+};
+
+const edgeTypes: EdgeTypes = {
+  topology: TopologyReactFlowEdge,
 };
 
 interface Props {
@@ -204,6 +210,7 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           colorMode={colorMode.toLowerCase() as 'light' | 'dark'}
           fitView
           onNodesChange={handleNodesChange}

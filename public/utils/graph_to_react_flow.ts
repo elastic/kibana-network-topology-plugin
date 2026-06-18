@@ -140,7 +140,7 @@ export const graphToReactFlow = (
 
   const nodes: Array<Node<TopologyNodeData>> = topoNodes.map((n) => ({
     id: n.id,
-    type: 'device',
+    type: 'device' as const,
     position: positions.get(n.id) ?? { x: 0, y: 0 },
     data: {
       label: n.label,
@@ -161,8 +161,9 @@ export const graphToReactFlow = (
     },
   }));
 
-  const edges: Array<Edge<TopologyEdgeData>> = topoLinks.map((l) => ({
+  const edges: Array<Edge<TopologyEdgeData, 'topology'>> = topoLinks.map((l) => ({
     id: l.id,
+    type: 'topology' as const,
     source: l.source,
     target: l.target,
     data: {
