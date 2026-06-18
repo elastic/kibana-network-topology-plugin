@@ -176,12 +176,11 @@ export const TopologyReactFlowNode = memo(
       <EuiFlexGroup direction="column" alignItems="center" gutterSize="xs" responsive={false}>
         <EuiFlexItem grow={false}>
           <Handle
-            type="target"
-            position={targetPosition ?? Position.Top}
+            type="source"
+            position={sourcePosition ?? Position.Top}
             css={handleStyles}
             isConnectable={false}
           />
-
           <div
             css={circleStyles}
             role="button"
@@ -191,12 +190,6 @@ export const TopologyReactFlowNode = memo(
           >
             <EuiIcon type={iconType} color={iconColor} size="l" aria-hidden={true} />
           </div>
-          <Handle
-            type="source"
-            position={sourcePosition ?? Position.Bottom}
-            css={handleStyles}
-            isConnectable={false}
-          />
         </EuiFlexItem>
         <EuiFlexItem grow={false} aria-hidden="true">
           <EuiTextTruncate text={data.label} width={120}>

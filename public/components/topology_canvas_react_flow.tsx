@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ReactFlow,
   ReactFlowProvider,
+  ConnectionMode,
   Background,
   useNodesState,
   useEdgesState,
@@ -325,6 +326,7 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
             onNodeClick={handleNodeClick}
             nodesDraggable
             selectNodesOnDrag={false}
+            connectionMode={ConnectionMode.Loose}
             nodesConnectable={false}
             nodesFocusable
             edgesFocusable={false}
