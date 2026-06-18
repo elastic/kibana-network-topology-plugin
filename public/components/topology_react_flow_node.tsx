@@ -99,15 +99,21 @@ export const TopologyReactFlowNode = memo(
             compressed
             listItems={[
               {
-                title: 'Status',
+                title: <EuiTextColor color="ghost">Status</EuiTextColor>,
                 description: (
                   <EuiHealth color={STATUS_EUI_COLORS[data.status] ?? 'subdued'}>
                     {data.status}
                   </EuiHealth>
                 ),
               },
-              { title: 'IP', description: data.ip || '—' },
-              { title: 'Type', description: data.type },
+              {
+                title: <EuiTextColor color="ghost">IP</EuiTextColor>,
+                description: data.ip || '—',
+              },
+              {
+                title: <EuiTextColor color="ghost">Type</EuiTextColor>,
+                description: data.type,
+              },
             ]}
           />
         </EuiFlexItem>
