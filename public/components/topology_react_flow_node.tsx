@@ -51,8 +51,7 @@ export const TopologyReactFlowNode = memo(
     const iconType = unmanaged ? 'question' : cfg.icon;
 
     // Device fills stay as fixed brand hues (legible in both light/dark; see plan for rationale).
-    // Unmanaged nodes use euiTheme.colors.backgroundBaseSubdued so they read as "muted/discovered" in any mode.
-    const fillColor = unmanaged ? euiTheme.colors.backgroundBaseSubdued : cfg.color;
+    const fillColor = unmanaged ? euiTheme.colors.backgroundLightText : cfg.color;
     const iconColor = unmanaged ? euiTheme.colors.textSubdued : euiTheme.colors.plainLight;
 
     // Status border resolves to euiTheme semantic tokens so it adapts to light/dark.

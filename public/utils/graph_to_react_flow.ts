@@ -36,6 +36,57 @@ const MAX_ROW_WIDTH = 12;
 // Layout order: BGP external peers (top) → managed tiers (middle) → ARP-discovered (bottom)
 const TYPE_TIERS = ['router', 'firewall', 'switch', 'server', 'ap', 'unknown'] as const;
 
+/**
+ * Filters a topology graph to only the nodes and links that should be visible
+ * given the current set of hidden type keys.
+ *
+ * Two-step logic:
+ *   1. Type filter   — drop any node whose key is in hiddenTypes.
+ *   2. Orphan prune  — drop unmanaged nodes that have no remaining link to a
+ *      visible managed node.  This cascades: hiding 'ap' also removes ARP-only
+ *      clients that were only reachable through those APs.
+ * Links are then restricted to pairs where both endpoints survived.
+ *
+ * Returns the original arrays unchanged when hiddenTypes is empty/undefined
+ * (fast path — avoids allocations on the common fully-visible case).
+ */
+const filterVisibleGraph = (
+  nodes: TopologyNode[],
+  links: TopologyLink[],
+  hiddenTypes?: Set<string>
+): { nodes: TopologyNode[]; links: TopologyLink[] } => {
+  if (!hiddenTypes || hiddenTypes.size === 0) return { nodes, links };
+
+  // Step 1: remove nodes whose type key is toggled off
+  const typeFiltered = nodes.filter((n) => {
+    const key = n.managed === false ? 'discovered' : n.type;
+    return !hiddenTypes.has(key);
+  });
+
+  // Step 2: prune orphaned unmanaged nodes — an unmanaged node is only kept if
+  // it has at least one link to a visible managed node.
+  const managedVisibleIds = new Set(
+    typeFiltered.filter((n) => n.managed !== false).map((n) => n.id)
+  );
+  const visibleNodes = typeFiltered.filter((n) => {
+    if (n.managed !== false) return true;
+    return links.some((l) => {
+      const src = l.source as string;
+      const tgt = l.target as string;
+      return (
+        (src === n.id && managedVisibleIds.has(tgt)) || (tgt === n.id && managedVisibleIds.has(src))
+      );
+    });
+  });
+
+  const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
+  const visibleLinks = links.filter(
+    (l) => visibleNodeIds.has(l.source as string) && visibleNodeIds.has(l.target as string)
+  );
+
+  return { nodes: visibleNodes, links: visibleLinks };
+};
+
 const computeLayout = (
   nodes: TopologyNode[],
   links: TopologyLink[],
@@ -118,9 +169,14 @@ const DEFAULT_HEIGHT = 800;
 export const graphToReactFlow = (
   graph: TopologyGraph,
   width = DEFAULT_WIDTH,
-  height = DEFAULT_HEIGHT
+  height = DEFAULT_HEIGHT,
+  hiddenTypes?: Set<string>
 ): { nodes: Array<Node<TopologyNodeData>>; edges: Array<Edge<TopologyEdgeData>> } => {
-  const { nodes: topoNodes, links: topoLinks } = graph;
+  const { nodes: topoNodes, links: topoLinks } = filterVisibleGraph(
+    graph.nodes,
+    graph.links,
+    hiddenTypes
+  );
 
   // Derive per-node discovery method from links (BGP > OSPF > ARP precedence).
   // Computed once here so the node component doesn't need access to the edge list.

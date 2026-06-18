@@ -23,8 +23,6 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
-  EuiBadge,
-  EuiButtonEmpty,
   EuiCallOut,
   EuiFlexGroup,
   EuiFlexItem,
@@ -46,6 +44,8 @@ import {
 import { TopologyReactFlowEdge } from './topology_react_flow_edge';
 import { TopologyReactFlowNode } from './topology_react_flow_node';
 import { DeviceFlyout } from './device_flyout';
+import { DeviceTypeControls } from './device_type_controls';
+import { SiteControls } from './site_controls';
 
 // Defined outside the component so the references are stable across renders —
 // passing inline objects to nodeTypes/edgeTypes would cause React Flow to remount on every render.
@@ -81,6 +81,16 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
+
+  const toggleType = useCallback((type: string) => {
+    setHiddenTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  }, []);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<TopologyNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge<TopologyEdgeData>>([]);
@@ -114,7 +124,8 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
     const { nodes: relaidOut } = graphToReactFlow(
       graph,
       containerRef.current?.clientWidth,
-      containerRef.current?.clientHeight
+      containerRef.current?.clientHeight,
+      hiddenTypes
     );
     // Re-apply the selection highlight: relaidOut nodes carry no `selected` flag
     // and the selection effect won't re-fire (selectedDeviceId is unchanged).
@@ -123,7 +134,7 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
     window.requestAnimationFrame(() => {
       void fitView();
     });
-  }, [graph, selectedDeviceId, setNodes, fitView]);
+  }, [graph, hiddenTypes, selectedDeviceId, setNodes, fitView]);
 
   // Keep RF's internal `selected` flag in sync with our state so the highlight always matches
   // the open flyout and survives RF's own selection attempts. The identity short-circuit
@@ -165,7 +176,8 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
       const { nodes: reactFlowNodes, edges: reactFlowEdges } = graphToReactFlow(
         graph,
         containerRef.current?.clientWidth,
-        containerRef.current?.clientHeight
+        containerRef.current?.clientHeight,
+        hiddenTypes
       );
       setNodes(applyDragOverrides(reactFlowNodes, dragOverridesRef.current));
       setEdges(reactFlowEdges);
@@ -175,7 +187,13 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
         prev && reactFlowNodes.some((n) => n.id === prev && n.data.managed !== false) ? prev : null
       );
     }
-  }, [graph, setNodes, setEdges]);
+  }, [graph, hiddenTypes, setNodes, setEdges]);
+
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      void fitView();
+    });
+  }, [hiddenTypes, fitView]);
 
   if (loading && !graph)
     return (
@@ -202,33 +220,9 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
   return (
     <>
       <EuiFlexGroup direction="column" gutterSize="s">
-        <EuiFlexGroup alignItems="center">
-          <EuiFlexItem grow={false}>
-            <EuiButtonEmpty iconType="arrowLeft" onClick={onBackToOverview}>
-              All Sites
-            </EuiButtonEmpty>
-          </EuiFlexItem>
-          {site && (
-            <EuiFlexItem grow={false}>
-              <EuiBadge color="hollow">{site}</EuiBadge>
-            </EuiFlexItem>
-          )}
-          {cidr && (
-            <EuiFlexItem grow={false}>
-              <EuiBadge color="hollow" style={{ fontFamily: 'monospace' }}>
-                {cidr}
-              </EuiBadge>
-            </EuiFlexItem>
-          )}
-          <EuiFlexItem grow={false}>
-            <EuiText size="s" color="subdued">
-              {graph.nodes.filter((n) => n.managed !== false).length} devices
-              {graph.nodes.some((n) => n.managed === false) &&
-                ` · ${graph.nodes.filter((n) => n.managed === false).length} discovered`}
-              {' · '}
-              {graph.links.length} links
-            </EuiText>
-          </EuiFlexItem>
+        <EuiFlexGroup alignItems="center" justifyContent="spaceBetween">
+          <SiteControls graph={graph} onBackToOverview={onBackToOverview} site={site} cidr={cidr} />
+          <DeviceTypeControls hiddenTypes={hiddenTypes} toggleType={toggleType} />
         </EuiFlexGroup>
         <div
           ref={containerRef}
@@ -243,7 +237,6 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             colorMode={colorMode.toLowerCase() as 'light' | 'dark'}
-            fitView
             onNodesChange={handleNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeClick={handleNodeClick}
