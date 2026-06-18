@@ -10,8 +10,6 @@ import {
   ReactFlow,
   ReactFlowProvider,
   Background,
-  Controls,
-  ControlButton,
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -20,20 +18,24 @@ import {
   type EdgeTypes,
   type NodeTypes,
   type NodeMouseHandler,
+  Panel,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
+  EuiButtonIcon,
   EuiCallOut,
   EuiFlexGroup,
   EuiFlexItem,
-  EuiIcon,
   EuiIconTip,
   EuiLoadingSpinner,
+  EuiPanel,
   EuiSpacer,
   EuiSwitch,
   EuiText,
+  EuiToolTip,
   useEuiTheme,
 } from '@elastic/eui';
+import { css } from '@emotion/react';
 import type { TopologyGraph } from '../../common';
 import { useApi } from '../hooks/use_api';
 import type { TopologyEdgeData, TopologyNodeData } from '../utils/graph_to_react_flow';
@@ -82,8 +84,8 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
   refreshKey,
 }) => {
   const api = useApi();
-  const { colorMode } = useEuiTheme();
-  const { fitView } = useReactFlow();
+  const { euiTheme, colorMode } = useEuiTheme();
+  const { fitView, zoomIn, zoomOut } = useReactFlow();
   const [graph, setGraph] = useState<TopologyGraph | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -227,6 +229,28 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
     });
   }, [hiddenTypes, fitView]);
 
+  const topLeftToolbarStyles = css`
+    display: flex;
+    flex-direction: row;
+    gap: ${euiTheme.size.s};
+    align-items: flex-start;
+    margin: ${euiTheme.size.s};
+  `;
+
+  const mapToolbarControlIconCss = css`
+    min-inline-size: calc(${euiTheme.size.base} * 2);
+    min-block-size: calc(${euiTheme.size.base} * 2);
+  `;
+
+  const serviceMapZoomControlsPanelCss = css`
+    z-index: ${euiTheme.levels.content};
+
+    @media (max-width: 960px) {
+      margin: ${euiTheme.size.xxs} !important;
+      overflow: auto;
+    }
+  `;
+
   if (loading && !graph)
     return (
       <EuiFlexGroup justifyContent="center" style={{ minHeight: 400 }}>
@@ -307,15 +331,70 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
             proOptions={{ hideAttribution: true }}
           >
             <Background />
-            <Controls showInteractive={false}>
-              <ControlButton
-                onClick={handleResetLayout}
-                title="Reset Layout"
-                aria-label="Reset Layout"
+            <Panel position="top-left" css={topLeftToolbarStyles}>
+              <EuiPanel
+                hasBorder
+                hasShadow={false}
+                paddingSize="none"
+                borderRadius="m"
+                grow={false}
+                data-testid="rf__controls"
+                css={serviceMapZoomControlsPanelCss}
               >
-                <EuiIcon type="refresh" aria-hidden={true} />
-              </ControlButton>
-            </Controls>
+                <EuiFlexGroup
+                  direction="column"
+                  gutterSize="none"
+                  alignItems="center"
+                  justifyContent="center"
+                  responsive={false}
+                >
+                  <EuiToolTip content="Zoom In" disableScreenReaderOutput>
+                    <EuiButtonIcon
+                      display="empty"
+                      color="text"
+                      size="s"
+                      iconType="plus"
+                      onClick={() => zoomIn()}
+                      aria-label="Zoom In"
+                      css={mapToolbarControlIconCss}
+                    />
+                  </EuiToolTip>
+                  <EuiToolTip content="Zoom Out" disableScreenReaderOutput>
+                    <EuiButtonIcon
+                      display="empty"
+                      color="text"
+                      size="s"
+                      iconType="minus"
+                      onClick={() => zoomOut()}
+                      aria-label="Zoom Out"
+                      css={mapToolbarControlIconCss}
+                    />
+                  </EuiToolTip>
+                  <EuiToolTip content="Fit View" disableScreenReaderOutput>
+                    <EuiButtonIcon
+                      display="empty"
+                      color="text"
+                      size="s"
+                      iconType="crosshair"
+                      onClick={() => fitView()}
+                      aria-label="Fit View"
+                      css={mapToolbarControlIconCss}
+                    />
+                  </EuiToolTip>
+                  <EuiToolTip content="Reset Layout" disableScreenReaderOutput>
+                    <EuiButtonIcon
+                      display="empty"
+                      color="text"
+                      size="s"
+                      iconType="refresh"
+                      onClick={handleResetLayout}
+                      aria-label="Reset Layout"
+                      css={mapToolbarControlIconCss}
+                    />
+                  </EuiToolTip>
+                </EuiFlexGroup>
+              </EuiPanel>
+            </Panel>
           </ReactFlow>
         </div>
       </EuiFlexGroup>
