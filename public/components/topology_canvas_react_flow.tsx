@@ -123,7 +123,7 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
       ? prefersReducedMotion
         ? "Animations are off to match your system's reduced-motion setting. Toggle to re-enable."
         : tooManyUnhealthy
-        ? 'Animations were automatically disabled for performance because many elements are unhealthy. Toggle to re-enable.'
+        ? 'Animations were automatically disabled to preserve performance on large graphs with unhealthy elements. Toggle to re-enable.'
         : null
       : null;
 
@@ -270,7 +270,7 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
                   {animationTip ? (
                     <EuiFlexItem grow={false}>
                       <EuiIconTip
-                        type="questionInCircle"
+                        type="question"
                         color="subdued"
                         content={animationTip}
                         aria-label="Why animations are disabled by default"
