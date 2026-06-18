@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -27,8 +27,10 @@ import {
   EuiFlexGroup,
   EuiFlexItem,
   EuiIcon,
+  EuiIconTip,
   EuiLoadingSpinner,
   EuiSpacer,
+  EuiSwitch,
   EuiText,
   useEuiTheme,
 } from '@elastic/eui';
@@ -42,6 +44,7 @@ import {
   type DragOverrides,
 } from '../utils/drag_overrides';
 import { TopologyReactFlowEdge } from './topology_react_flow_edge';
+import { usePrefersReducedMotion } from '../hooks/use_prefers_reduced_motion';
 import { TopologyReactFlowNode } from './topology_react_flow_node';
 import { DeviceFlyout } from './device_flyout';
 import { DeviceTypeControls } from './device_type_controls';
@@ -56,6 +59,10 @@ const nodeTypes: NodeTypes = {
 const edgeTypes: EdgeTypes = {
   topology: TopologyReactFlowEdge,
 };
+
+// Above this many *unhealthy* (animating) elements, auto-disable pulses to avoid
+// compositor-layer pressure. Users can always override via the toolbar switch.
+const UNHEALTHY_ANIMATION_LIMIT = 75;
 
 interface Props {
   site?: string;
@@ -94,6 +101,31 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<TopologyNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge<TopologyEdgeData>>([]);
+
+  const prefersReducedMotion = usePrefersReducedMotion();
+  // null = follow auto (off under reduced-motion or many unhealthy elements). true/false = explicit choice.
+  const [animationsUserPref, setAnimationsUserPref] = useState<boolean | null>(null);
+
+  const unhealthyCount = useMemo(
+    () =>
+      nodes.filter((n) => n.data.status === 'down' || n.data.status === 'degraded').length +
+      edges.filter((e) => !!e.data && e.data.status !== 'up').length,
+    [nodes, edges]
+  );
+  const tooManyUnhealthy = unhealthyCount > UNHEALTHY_ANIMATION_LIMIT;
+  const autoDisabled = prefersReducedMotion || tooManyUnhealthy;
+  const animationsDisabled = animationsUserPref ?? autoDisabled;
+
+  // Show a reason tip only while the user hasn't overridden the default.
+  // Reduced-motion takes precedence over the performance message when both apply.
+  const animationTip =
+    animationsUserPref === null
+      ? prefersReducedMotion
+        ? "Animations are off to match your system's reduced-motion setting. Toggle to re-enable."
+        : tooManyUnhealthy
+        ? 'Animations were automatically disabled for performance because many elements are unhealthy. Toggle to re-enable.'
+        : null
+      : null;
 
   const containerRef = useRef<HTMLDivElement>(null);
   // Stores positions the operator has manually dragged — survive data refreshes
@@ -222,10 +254,37 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
       <EuiFlexGroup direction="column" gutterSize="s">
         <EuiFlexGroup alignItems="center" justifyContent="spaceBetween">
           <SiteControls graph={graph} onBackToOverview={onBackToOverview} site={site} cidr={cidr} />
-          <DeviceTypeControls hiddenTypes={hiddenTypes} toggleType={toggleType} />
+          <EuiFlexItem grow={false}>
+            <EuiFlexGroup gutterSize="m" alignItems="center" responsive={false}>
+              <DeviceTypeControls hiddenTypes={hiddenTypes} toggleType={toggleType} />
+              <EuiFlexItem grow={false}>
+                <EuiFlexGroup gutterSize="xs" alignItems="center" responsive={false}>
+                  <EuiFlexItem grow={false}>
+                    <EuiSwitch
+                      compressed
+                      label="Disable animations"
+                      checked={animationsDisabled}
+                      onChange={(e) => setAnimationsUserPref(e.target.checked)}
+                    />
+                  </EuiFlexItem>
+                  {animationTip ? (
+                    <EuiFlexItem grow={false}>
+                      <EuiIconTip
+                        type="questionInCircle"
+                        color="subdued"
+                        content={animationTip}
+                        aria-label="Why animations are disabled by default"
+                      />
+                    </EuiFlexItem>
+                  ) : null}
+                </EuiFlexGroup>
+              </EuiFlexItem>
+            </EuiFlexGroup>
+          </EuiFlexItem>
         </EuiFlexGroup>
         <div
           ref={containerRef}
+          data-animations={animationsDisabled ? 'off' : 'on'}
           style={{
             height: '100%',
             width: '100%',

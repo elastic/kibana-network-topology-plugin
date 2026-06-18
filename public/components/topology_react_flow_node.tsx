@@ -26,11 +26,21 @@ import {
   EuiToolTip,
   useEuiTheme,
 } from '@elastic/eui';
-import { css } from '@emotion/react';
+import { css, keyframes } from '@emotion/react';
 import { DEVICE_TYPE_CONFIG, STATUS_EUI_COLORS } from '../../common';
 import type { TopologyNodeData } from '../utils/graph_to_react_flow';
 
 const NODE_SIZE = 60;
+
+// Pulses scale + opacity for down/degraded nodes.
+// Compositor-only properties (transform + opacity) — no layout or paint triggered.
+// Gated by [data-animations='on'] on the graph container so toggling never
+// causes per-node React re-renders; only the container attribute changes.
+const nodePulse = keyframes`
+  0%   { transform: scale(1);    opacity: 0.85; }
+  50%  { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(1);    opacity: 0.85; }
+`;
 
 type TopologyDeviceNode = Node<TopologyNodeData, 'device'>;
 
@@ -49,6 +59,7 @@ export const TopologyReactFlowNode = memo(
     const isSelected = selected && !unmanaged && !multipleNodesSelected;
     const cfg = DEVICE_TYPE_CONFIG[data.type] ?? DEVICE_TYPE_CONFIG.unknown;
     const iconType = unmanaged ? 'question' : cfg.icon;
+    const isUnhealthy = data.status === 'down' || data.status === 'degraded';
 
     // Device fills stay as fixed brand hues (legible in both light/dark; see plan for rationale).
     const fillColor = unmanaged ? euiTheme.colors.backgroundLightText : cfg.color;
@@ -134,6 +145,14 @@ export const TopologyReactFlowNode = memo(
       cursor: ${cursor};
       pointer-events: all;
       flex-shrink: 0;
+      transform-origin: center;
+      ${isUnhealthy
+        ? css`
+            [data-animations='on'] & {
+              animation: ${nodePulse} 2s ease-in-out infinite;
+            }
+          `
+        : ''}
     `;
 
     const labelStyles = css`

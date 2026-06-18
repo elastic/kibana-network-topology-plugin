@@ -6,6 +6,7 @@
  */
 
 import React, { memo } from 'react';
+import { css, keyframes } from '@emotion/react';
 import { BaseEdge, getBezierPath, type EdgeProps, type Edge } from '@xyflow/react';
 import { useEuiTheme } from '@elastic/eui';
 import type { TopologyEdgeData } from '../utils/graph_to_react_flow';
@@ -18,6 +19,16 @@ type Method = TopologyEdgeData['method'];
 // Healthy BGP/OSPF have no EUI semantic token equivalent.
 const BGP_COLOR = '#0077CC';
 const OSPF_COLOR = '#54B399';
+
+// Pulses opacity for unhealthy (down/degraded) links.
+// Opacity is compositor-only — no layout or paint triggered.
+// Gated by [data-animations='on'] on the graph container so toggling never
+// causes per-edge React re-renders; only the container attribute changes.
+const edgePulse = keyframes`
+  0%   { opacity: 0.45; }
+  50%  { opacity: 0.9; }
+  100% { opacity: 0.45; }
+`;
 
 const resolveStroke = (
   status: Status,
@@ -76,17 +87,28 @@ export const TopologyReactFlowEdge = memo(
       targetPosition,
     });
 
+    const isUnhealthy = status !== 'up';
+    const groupStyles = isUnhealthy
+      ? css`
+          [data-animations='on'] & .react-flow__edge-path {
+            animation: ${edgePulse} 2s ease-in-out infinite;
+          }
+        `
+      : undefined;
+
     return (
-      <BaseEdge
-        id={id}
-        path={edgePath}
-        style={{
-          stroke: resolveStroke(status, method, euiTheme.colors),
-          strokeDasharray: resolveDash(status, method),
-          strokeWidth: resolveWidth(status, method),
-          opacity: resolveOpacity(status, method),
-        }}
-      />
+      <g css={groupStyles}>
+        <BaseEdge
+          id={id}
+          path={edgePath}
+          style={{
+            stroke: resolveStroke(status, method, euiTheme.colors),
+            strokeDasharray: resolveDash(status, method),
+            strokeWidth: resolveWidth(status, method),
+            opacity: resolveOpacity(status, method),
+          }}
+        />
+      </g>
     );
   }
 );
