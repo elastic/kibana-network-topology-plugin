@@ -157,6 +157,31 @@ export async function buildTopologyFromArpMac(
     });
   }
 
+  // Step 1b: Interface IP table — maps every interface IP to its device so OSPF/BGP
+  // neighbor IPs (tunnel IPs, loopbacks used as Router IDs, etc.) resolve even when
+  // they differ from host.ip (the management/polling address).
+  const ipAddrResult = await esClient.search({
+    index,
+    size: 0,
+    query: { bool: { filter: [...filters, { exists: { field: 'ip_addr.address' } }] } },
+    aggs: {
+      by_device: {
+        terms: { field: 'host.name', size: 5000 },
+        aggs: { ips: { terms: { field: 'ip_addr.address', size: 1000 } } },
+      },
+    },
+  });
+
+  const ifaceIpToDevice = new Map<string, string>();
+  for (const bucket of (ipAddrResult.aggregations?.by_device as any)?.buckets || []) {
+    const hostname = bucket.key as string;
+    for (const ipBucket of bucket.ips?.buckets || []) {
+      const ifaceIp = ipBucket.key as string;
+      // Only add if not already claimed by a management IP so ipToDevice stays authoritative.
+      if (!ifaceIpToDevice.has(ifaceIp)) ifaceIpToDevice.set(ifaceIp, hostname);
+    }
+  }
+
   // Step 2: ARP tables
   const arpResult = await esClient.search({
     index,
@@ -338,7 +363,7 @@ export async function buildTopologyFromArpMac(
       const remoteIp = peerBucket.key as string;
       const peerState = peerBucket.state?.buckets?.[0]?.key || 'Idle';
       const remoteAsn = peerBucket.remote_asn?.buckets?.[0]?.key;
-      let neighbor = ipToDevice.get(remoteIp);
+      let neighbor = ipToDevice.get(remoteIp) ?? ifaceIpToDevice.get(remoteIp);
       // If this IP is already an ARP-discovered unmanaged node and we have an ASN,
       // upgrade its label — the raw IP is a fallback only.
       if (neighbor && remoteAsn) {
@@ -403,6 +428,7 @@ export async function buildTopologyFromArpMac(
             terms: { field: 'ospf_neighbor.neighbor_ip', size: 500 },
             aggs: {
               state: { terms: { field: 'ospf_neighbor.state', size: 1 } },
+              router_id: { terms: { field: 'ospf_neighbor.router_id', size: 1 } },
             },
           },
         },
@@ -416,7 +442,12 @@ export async function buildTopologyFromArpMac(
     for (const nbrBucket of devBucket.neighbors?.buckets || []) {
       const neighborIp = nbrBucket.key as string;
       const nbrState = nbrBucket.state?.buckets?.[0]?.key || 'Down';
-      const neighbor = ipToDevice.get(neighborIp);
+      const routerId = nbrBucket.router_id?.buckets?.[0]?.key as string | undefined;
+      const neighbor =
+        ipToDevice.get(neighborIp) ??
+        ifaceIpToDevice.get(neighborIp) ??
+        (routerId ? ipToDevice.get(routerId) : undefined) ??
+        (routerId ? ifaceIpToDevice.get(routerId) : undefined);
       if (neighbor && neighbor !== deviceName && deviceMap.has(neighbor)) {
         const ospfKey = [deviceName, neighbor].sort().join('||') + '||ospf';
         if (!linkSet.has(ospfKey)) {

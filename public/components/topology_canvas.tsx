@@ -487,10 +487,19 @@ export const TopologyCanvas: React.FC<Props> = ({
               : 'Unmanaged (ARP-discovered)'
           );
         }
+        const tooltipW = Math.max(
+          160,
+          Math.max(
+            ...lines.map((l, i) => {
+              overlayCtx.font = i === 0 ? 'bold 12px sans-serif' : '11px sans-serif';
+              return overlayCtx.measureText(l).width;
+            })
+          ) + 16
+        );
         overlayCtx.fillStyle = 'rgba(30,30,30,0.92)';
         overlayCtx.strokeStyle = 'rgba(255,255,255,0.15)';
         overlayCtx.lineWidth = 1;
-        roundRect(overlayCtx, tx, ty, 160, lines.length * 16 + 16, 6);
+        roundRect(overlayCtx, tx, ty, tooltipW, lines.length * 16 + 16, 6);
         overlayCtx.fill();
         overlayCtx.stroke();
         overlayCtx.fillStyle = '#FFF';
