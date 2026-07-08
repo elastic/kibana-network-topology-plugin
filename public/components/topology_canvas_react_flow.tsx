@@ -30,11 +30,14 @@ import {
   EuiIconTip,
   EuiLoadingSpinner,
   EuiPanel,
+  EuiScreenReaderLive,
+  EuiScreenReaderOnly,
   EuiSpacer,
   EuiSwitch,
   EuiText,
   EuiToolTip,
   useEuiTheme,
+  useGeneratedHtmlId,
 } from '@elastic/eui';
 import { css } from '@emotion/react';
 import type { TopologyGraph } from '../../common';
@@ -48,6 +51,7 @@ import {
 } from '../utils/drag_overrides';
 import { TopologyReactFlowEdge } from './topology_react_flow_edge';
 import { usePrefersReducedMotion } from '../hooks/use_prefers_reduced_motion';
+import { useKeyboardNavigation } from '../hooks/use_keyboard_navigation';
 import { TopologyReactFlowNode } from './topology_react_flow_node';
 import { DeviceFlyout } from './device_flyout';
 import { DeviceTypeControls } from './device_type_controls';
@@ -134,12 +138,29 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
   // Stores positions the operator has manually dragged — survive data refreshes
   const dragOverridesRef = useRef<DragOverrides>(new Map());
 
-  const handleNodeClick = useCallback<NodeMouseHandler<Node<TopologyNodeData>>>((_event, node) => {
+  // Single source of truth for selecting a device — used by both mouse click and
+  // keyboard Enter/Space so the two paths can't drift. Unmanaged/discovered nodes
+  // have no flyout, so they are ignored.
+  const handleNodeSelect = useCallback((node: Node<TopologyNodeData>) => {
     if (node.data?.managed === false) return;
     setSelectedDeviceId(node.id);
   }, []);
 
+  const handleNodeClick = useCallback<NodeMouseHandler<Node<TopologyNodeData>>>(
+    (_event, node) => handleNodeSelect(node),
+    [handleNodeSelect]
+  );
+
   const handleCloseFlyout = useCallback(() => setSelectedDeviceId(null), []);
+
+  const topologyDescriptionId = useGeneratedHtmlId({ prefix: 'topologyKeyboardHelp' });
+  const { screenReaderAnnouncement } = useKeyboardNavigation({
+    nodes,
+    selectedDeviceId,
+    onNodeSelect: handleNodeSelect,
+    onClose: handleCloseFlyout,
+    containerRef,
+  });
 
   // Wraps RF's onNodesChange to capture terminal drag positions into the ref
   // before delegating — keeps live-drag rendering intact via the passthrough.
@@ -310,11 +331,22 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
         <div
           ref={containerRef}
           data-animations={animationsDisabled ? 'off' : 'on'}
+          role="group"
+          tabIndex={0}
+          aria-label={`Network topology with ${nodes.length} devices.`}
+          aria-describedby={topologyDescriptionId}
           style={{
             height: '100%',
             width: '100%',
           }}
         >
+          <EuiScreenReaderOnly>
+            <div id={topologyDescriptionId}>
+              Use Tab to move between devices. Use Arrow keys to move between adjacent devices.
+              Press Enter or Space to open a device&apos;s details. Press Escape to close.
+            </div>
+          </EuiScreenReaderOnly>
+          <EuiScreenReaderLive>{screenReaderAnnouncement}</EuiScreenReaderLive>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -328,7 +360,10 @@ const TopologyCanvasReactFlowInner: React.FC<Props> = ({
             selectNodesOnDrag={false}
             connectionMode={ConnectionMode.Loose}
             nodesConnectable={false}
-            nodesFocusable
+            // Even though nodes are technically focusable in this graph, we want to handle focus state ourselves
+            // rather than relying on React Flow's internal focus management, as it is incompatible with some of our features
+            // such as node tooltips.
+            nodesFocusable={false}
             edgesFocusable={false}
             proOptions={{ hideAttribution: true }}
           >
