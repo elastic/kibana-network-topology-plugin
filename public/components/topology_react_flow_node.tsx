@@ -49,6 +49,11 @@ export const TopologyReactFlowNode = memo(
     const { euiTheme } = useEuiTheme();
 
     const [hovered, setHovered] = useState(false);
+    const [focused, setFocused] = useState(false);
+    // Tracks the same triggers that show the EuiToolTip (hover or keyboard
+    // focus on the hit-target below), so the label darkens exactly when the
+    // tooltip preview is visible.
+    const previewVisible = hovered || focused;
 
     const unmanaged = data.managed === false;
     // Suppress selected UI when multiple nodes are selected — the flyout only opens for single
@@ -187,6 +192,8 @@ export const TopologyReactFlowNode = memo(
             tabIndex={0}
             aria-label={ariaLabel}
             aria-pressed={isSelected}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
           >
             <EuiIcon type={iconType} color={iconColor} size="l" aria-hidden={true} />
           </div>
@@ -196,7 +203,7 @@ export const TopologyReactFlowNode = memo(
             {(truncatedLabel) => (
               <EuiTitle size="xs">
                 <p css={labelStyles}>
-                  <EuiTextColor color={selected || hovered ? 'default' : 'subdued'}>
+                  <EuiTextColor color={selected || previewVisible ? 'default' : 'subdued'}>
                     {truncatedLabel}
                   </EuiTextColor>
                 </p>
