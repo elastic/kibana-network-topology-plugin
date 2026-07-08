@@ -45,7 +45,7 @@ const nodePulse = keyframes`
 type TopologyDeviceNode = Node<TopologyNodeData, 'device'>;
 
 export const TopologyReactFlowNode = memo(
-  ({ data, selected, sourcePosition, targetPosition, dragging }: NodeProps<TopologyDeviceNode>) => {
+  ({ data, selected, dragging }: NodeProps<TopologyDeviceNode>) => {
     const { euiTheme } = useEuiTheme();
 
     const [hovered, setHovered] = useState(false);
@@ -182,9 +182,37 @@ export const TopologyReactFlowNode = memo(
         <EuiFlexItem grow={false}>
           <Handle
             type="source"
-            position={sourcePosition ?? Position.Top}
+            id="top"
+            position={Position.Top}
             css={handleStyles}
             isConnectable={false}
+          />
+          <Handle
+            type="source"
+            id="bottom"
+            position={Position.Bottom}
+            css={handleStyles}
+            isConnectable={false}
+          />
+          {/* Left/right anchor to the circle's own vertical center (NODE_SIZE / 2
+              from the node's top edge, where the circle starts) rather than RF's
+              default — the whole node's midpoint — which would fall inside the
+              label/IP text below the circle instead of on the device icon. */}
+          <Handle
+            type="source"
+            id="left"
+            position={Position.Left}
+            css={handleStyles}
+            isConnectable={false}
+            style={{ top: NODE_SIZE / 2 }}
+          />
+          <Handle
+            type="source"
+            id="right"
+            position={Position.Right}
+            css={handleStyles}
+            isConnectable={false}
+            style={{ top: NODE_SIZE / 2 }}
           />
           <div
             css={circleStyles}

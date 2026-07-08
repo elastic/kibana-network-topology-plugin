@@ -166,6 +166,27 @@ const computeLayout = (
 const DEFAULT_WIDTH = 1200;
 const DEFAULT_HEIGHT = 800;
 
+type EdgeHandle = 'top' | 'bottom' | 'left' | 'right';
+
+// Cross-layer links exit the upper node's bottom and enter the lower node's
+// top, matching the tiered layout from computeLayout. Same-row links (equal
+// y — e.g. same-tier mesh links) instead run left-to-right between whichever
+// node is further left/right, since a top/bottom loop would look odd for two
+// nodes at the same height.
+const pickHandles = (
+  source: { x: number; y: number },
+  target: { x: number; y: number }
+): { sourceHandle: EdgeHandle; targetHandle: EdgeHandle } => {
+  if (source.y === target.y) {
+    return source.x < target.x
+      ? { sourceHandle: 'right', targetHandle: 'left' } // source is left of target
+      : { sourceHandle: 'left', targetHandle: 'right' }; // source is right of target
+  }
+  return source.y < target.y
+    ? { sourceHandle: 'bottom', targetHandle: 'top' } // source is above target
+    : { sourceHandle: 'top', targetHandle: 'bottom' }; // source is below target
+};
+
 export const graphToReactFlow = (
   graph: TopologyGraph,
   width = DEFAULT_WIDTH,
@@ -217,20 +238,28 @@ export const graphToReactFlow = (
     },
   }));
 
-  const edges: Array<Edge<TopologyEdgeData, 'topology'>> = topoLinks.map((l) => ({
-    id: l.id,
-    type: 'topology' as const,
-    source: l.source,
-    target: l.target,
-    data: {
-      status: l.status,
-      method: l.method,
-      sourcePort: l.sourcePort,
-      targetPort: l.targetPort,
-      trafficVolume: l.trafficVolume,
-    },
-    selectable: false,
-  }));
+  const edges: Array<Edge<TopologyEdgeData, 'topology'>> = topoLinks.map((l) => {
+    const sourcePos = positions.get(l.source) ?? { x: 0, y: 0 };
+    const targetPos = positions.get(l.target) ?? { x: 0, y: 0 };
+    const { sourceHandle, targetHandle } = pickHandles(sourcePos, targetPos);
+
+    return {
+      id: l.id,
+      type: 'topology' as const,
+      source: l.source,
+      target: l.target,
+      sourceHandle,
+      targetHandle,
+      data: {
+        status: l.status,
+        method: l.method,
+        sourcePort: l.sourcePort,
+        targetPort: l.targetPort,
+        trafficVolume: l.trafficVolume,
+      },
+      selectable: false,
+    };
+  });
 
   return { nodes, edges };
 };
