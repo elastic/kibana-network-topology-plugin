@@ -22,7 +22,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "22.22.0"
+          node-version: "24.18.0"
 
       - name: Check license headers
         run: node scripts/check_license_headers.mjs
