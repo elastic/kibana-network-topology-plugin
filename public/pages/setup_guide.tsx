@@ -255,7 +255,7 @@ output {
     hosts    => ["https://YOUR_ES_HOST:9200"]
     user     => "elastic"
     password => "YOUR_PASSWORD"
-    ssl_certificate_verification => false
+    ssl_verification_mode => "none"
     data_stream           => true
     data_stream_type      => "logs"
     data_stream_dataset   => "snmp.topology"
