@@ -6,7 +6,8 @@
  */
 
 import React, { useRef, useEffect } from 'react';
-import { zoom, zoomIdentity, ZoomTransform } from 'd3-zoom';
+import type { ZoomTransform } from 'd3-zoom';
+import { zoom, zoomIdentity } from 'd3-zoom';
 import { quadtree } from 'd3-quadtree';
 import { select } from 'd3-selection';
 import type { TopologyGraph, TopologyNode, TopologyLink } from '../../common';

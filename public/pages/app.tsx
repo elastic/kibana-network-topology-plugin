@@ -26,8 +26,9 @@ import { SegmentOverview } from './segment_overview';
 import { TopologyView } from './topology_view';
 import { DeviceListView } from './device_list';
 import { SetupGuide } from './setup_guide';
+import { TopologyCanvasReactFlow } from '../components/topology_canvas_react_flow';
 
-type ViewMode = 'overview' | 'topology' | 'devices' | 'setup';
+type ViewMode = 'overview' | 'topology' | 'topology2' | 'devices' | 'setup';
 
 export const NetworkTopologyApp: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('overview');
@@ -40,12 +41,12 @@ export const NetworkTopologyApp: React.FC = () => {
 
   const handleSiteClick = useCallback((site: string) => {
     setScope({ site });
-    setViewMode('topology');
+    setViewMode('topology2');
   }, []);
 
   const handleSegmentClick = useCallback((cidr: string) => {
     setScope({ cidr });
-    setViewMode('topology');
+    setViewMode('topology2');
   }, []);
 
   const handleBackToOverview = useCallback(() => {
@@ -113,7 +114,7 @@ export const NetworkTopologyApp: React.FC = () => {
         </EuiPageHeader>
 
         <EuiTabs>
-          {(['overview', 'topology', 'devices', 'setup'] as ViewMode[]).map((tab) => (
+          {(['overview', 'topology', 'topology2', 'devices', 'setup'] as ViewMode[]).map((tab) => (
             <EuiTab key={tab} isSelected={viewMode === tab} onClick={() => setViewMode(tab)}>
               {tab === 'overview'
                 ? 'Overview'
@@ -121,6 +122,8 @@ export const NetworkTopologyApp: React.FC = () => {
                 ? 'Topology Map'
                 : tab === 'devices'
                 ? 'Devices'
+                : tab === 'topology2'
+                ? 'Topology Map 2'
                 : 'Setup'}
             </EuiTab>
           ))}
@@ -151,6 +154,16 @@ export const NetworkTopologyApp: React.FC = () => {
         )}
         {viewMode === 'topology' && (
           <TopologyView
+            site={scope.site}
+            cidr={scope.cidr}
+            onBackToOverview={handleBackToOverview}
+            from={start}
+            to={end}
+            refreshKey={refreshKey}
+          />
+        )}
+        {viewMode === 'topology2' && (
+          <TopologyCanvasReactFlow
             site={scope.site}
             cidr={scope.cidr}
             onBackToOverview={handleBackToOverview}
