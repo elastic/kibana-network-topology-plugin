@@ -14,6 +14,8 @@ import type {
   DevicesResponse,
   DeviceDetailResponse,
   SetupHealthResponse,
+  ConnectionsGraph,
+  ConnectionsRequest,
 } from '../../common';
 
 export class ApiClient {
@@ -70,6 +72,16 @@ export class ApiClient {
     params: { from?: string; to?: string } = {}
   ): Promise<DeviceDetailResponse> {
     return this.http.get(`${API_ROUTES.DEVICE_DETAIL}/${encodeURIComponent(deviceId)}`, {
+      query: { from: 'now-1h', to: 'now', ...params },
+    });
+  }
+
+  /**
+   * Server-shaped relationship graph between two aggregatable fields. Sizes are
+   * clamped server-side, so passing large values is safe.
+   */
+  async fetchConnections(params: Partial<ConnectionsRequest>): Promise<ConnectionsGraph> {
+    return this.http.get(API_ROUTES.CONNECTIONS, {
       query: { from: 'now-1h', to: 'now', ...params },
     });
   }

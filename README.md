@@ -12,6 +12,7 @@ A Kibana Observability plugin for **network monitoring and topology mapping**. C
 
 - **Site overview** — Health card grid showing aggregated device and interface status per site
 - **Interactive topology graph** — Canvas-based, D3 force-directed layout with zoom, pan, drag, and node type visibility toggles
+- **Connections view** — Arkime-style relationship graph between any two aggregatable fields (`source.ip` → `destination.ip` by default), sized by session volume, with click-to-inspect, 1-hop focus, and field-pair pivoting
 - **Device detail flyout** — Interface table, ARP neighbors, BGP peer sessions, OSPF adjacencies
 - **Device inventory list** — Searchable, paginated table of all devices with KQL filtering
 - **Multi-layer topology discovery** — L2 (MAC table), L3 (ARP), BGP overlay, and OSPF adjacency links
@@ -141,6 +142,9 @@ chmod +x scripts/setup_elasticsearch.sh
 ./scripts/setup_elasticsearch.sh
 
 node scripts/generate_sample_data.mjs
+
+# Optional: flow data for the Connections view (creates the `netflow-sample` index)
+node scripts/generate_sample_flows.mjs
 ```
 
 > Note: `scripts/setup_elasticsearch.sh` and the data generators default to:
@@ -171,6 +175,53 @@ Navigate to **http://localhost:5601** → **Observability** → **Network Topolo
 Default login: `elastic` / `changeme`
 
 > **Data shows 0 devices?** Check the time range. Sample data uses current timestamps, so use **Last 15 minutes** and click **Refresh**.
+
+---
+
+## Connections view
+
+The **Connections** tab renders a force-directed graph of the relationship between
+**any two aggregatable fields** in the selected data view — not just SNMP topology.
+Pick a *field pair* and the server aggregates the top talkers into ready-to-render
+nodes and links.
+
+<!-- TODO: screenshot — connections graph with hub clustering and a scanner fan-out -->
+
+**The field-pair concept.** Every graph is "left field → right field":
+
+| Field pair                     | What you see                                        |
+| ------------------------------ | --------------------------------------------------- |
+| `source.ip` → `destination.ip` | Who talks to whom (default)                         |
+| `client.ip` → `server.ip`      | Same, for datasets using the client/server pair     |
+| `source.ip` → `destination.port` | Which services each host reaches — spots scanners |
+| `host.name` → `destination.ip` | Egress per host                                     |
+| `user.name` → `host.name`      | Which users touched which hosts                     |
+
+The presets are shortcuts; both selectors are free-form, so any aggregatable
+`ip`, `keyword`, or numeric field works. Switching the pair pivots the whole graph.
+
+**How the aggregation works.** One `size: 0` search with nested `terms`
+aggregations — top N values of the left field, then top M values of the right field
+within each. Both levels use global ordinals. Node size scales with session count,
+link width with the number of matching documents, and node colour shows whether a
+value appeared on the left, the right, or both.
+
+> `multi_terms` is deliberately **not** used here. It cannot use global ordinals and
+> materializes a composite key for every left×right combination, which does not
+> survive realistic flow volumes.
+
+**Interactions**
+
+- **Click** a node for a flyout: totals, peer table, and hide/focus/copy actions
+- **Focus** filters to that node's 1-hop neighbourhood; **double-click** the
+  background to clear focus and selection
+- **Drag** a node to pin it (pins survive refreshes); **Release pins** re-runs the layout
+- Scroll to zoom, drag the background to pan
+- Labels appear as you zoom in, so large graphs stay legible
+
+**Limits.** `Top sources` and `Peers each` are clamped server-side (200 × 25). When
+more pairs match than were returned, a callout says so — narrow the time range or
+add a filter rather than raising the caps.
 
 ---
 
@@ -219,11 +270,13 @@ Field mappings are documented in [`docs/field-reference.md`](docs/field-referenc
 ├──────────────────────────────────────────────────────┤
 │ Client (public/)                                     │
 │  Site Overview → Topology Canvas → Device Flyout     │
+│  Connections Canvas → Node Flyout (field pivoting)   │
 │  D3 force layout · Canvas 2D · Quadtree hit detect   │
 │  Visibility toggles · BGP/OSPF/ARP link rendering    │
 ├──────────────────────────────────────────────────────┤
 │ Server (server/)                                     │
 │  Topology builder: ARP/MAC/BGP/OSPF adjacency        │
+│  Connections builder: nested terms → nodes + links   │
 │  Device detail: interfaces, neighbors, routing peers │
 │  Setup health check: template, pipeline, coverage    │
 ├──────────────────────────────────────────────────────┤

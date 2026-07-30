@@ -72,6 +72,64 @@ export interface TopologyGraph {
   method: string;
 }
 
+/**
+ * Which side of the configured field pair a connections node was seen on.
+ * A node that appears as both a source and a destination is 'both'.
+ */
+export type ConnectionRole = 'source' | 'target' | 'both';
+
+export interface ConnectionsNode {
+  /** Field value, e.g. "10.1.2.3" */
+  id: string;
+  role: ConnectionRole;
+  /** Total doc_count across every link touching this node */
+  sessions: number;
+  /** Omitted when the metric field is absent from the index */
+  bytes?: number;
+  packets?: number;
+  /** Number of links touching this node */
+  degree: number;
+}
+
+export interface ConnectionsLink {
+  /** `${source}→${target}` */
+  id: string;
+  source: string;
+  target: string;
+  sessions: number;
+  bytes?: number;
+  packets?: number;
+}
+
+export interface ConnectionsGraph {
+  nodes: ConnectionsNode[];
+  links: ConnectionsLink[];
+  /** True if the source or fan-out caps were hit — the graph is a top-N sample */
+  truncated: boolean;
+  /** Elasticsearch `took`, in ms */
+  took: number;
+}
+
+export interface ConnectionsRequest {
+  index: string;
+  /** Aggregatable field for the left-hand side of the pair, e.g. 'source.ip' */
+  srcField: string;
+  /** Aggregatable field for the right-hand side of the pair, e.g. 'destination.ip' */
+  dstField: string;
+  from: string;
+  to: string;
+  /** Optional KQL, parsed server-side */
+  kql?: string;
+  /** JSON-serialized `Filter[]` from the search bar */
+  filters?: string;
+  /** Top-N sources; clamped server-side */
+  maxSources: number;
+  /** Top-M destinations per source; clamped server-side */
+  maxDstPerSource: number;
+  /** Drop links below this session count */
+  minSessions: number;
+}
+
 export interface SiteHealth {
   site: string;
   deviceCount: number;

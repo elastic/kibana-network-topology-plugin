@@ -14,6 +14,9 @@ export const DEFAULT_SYSLOG_INDEX = 'logs-*,filebeat-*';
 export const DEFAULT_NETFLOW_INDEX = 'netflow-*';
 export const DEFAULT_METRICS_INDEX = 'metricbeat-*';
 
+/** Flow/event indices the Connections view aggregates over by default. */
+export const DEFAULT_CONNECTIONS_INDEX = `${DEFAULT_NETFLOW_INDEX},logs-*`;
+
 export const API_BASE = '/api/network_topology';
 export const API_ROUTES = {
   TOPOLOGY: `${API_BASE}/topology`,
@@ -24,7 +27,49 @@ export const API_ROUTES = {
   INTERFACES: `${API_BASE}/interfaces`,
   HEALTH: `${API_BASE}/health`,
   SETUP_HEALTH: `${API_BASE}/setup/health`,
+  CONNECTIONS: `${API_BASE}/connections`,
 } as const;
+
+// ── Connections view ───────────────────────────────────────────────────────
+// Convenience pairs for the field selectors. The selectors stay free-form —
+// any aggregatable ip/keyword/numeric field is a valid pivot.
+export const CONNECTION_FIELD_PRESETS: Array<{ label: string; src: string; dst: string }> = [
+  { label: 'Source IP → Destination IP', src: 'source.ip', dst: 'destination.ip' },
+  { label: 'Client IP → Server IP', src: 'client.ip', dst: 'server.ip' },
+  { label: 'Source IP → Destination Port', src: 'source.ip', dst: 'destination.port' },
+  { label: 'Host → Destination IP', src: 'host.name', dst: 'destination.ip' },
+  { label: 'User → Host', src: 'user.name', dst: 'host.name' },
+];
+
+export const CONNECTIONS_DEFAULTS = {
+  srcField: 'source.ip',
+  dstField: 'destination.ip',
+  maxSources: 50,
+  maxDstPerSource: 10,
+  minSessions: 1,
+} as const;
+
+// Hard ceilings applied server-side regardless of request params. maxSources ×
+// maxDstPerSource bounds the link count, which is what protects Elasticsearch
+// and the renderer.
+export const CONNECTIONS_LIMITS = {
+  maxSources: 200,
+  maxDstPerSource: 25,
+} as const;
+
+/** Metric fields summed per link. Absent from the mapping → the metric is omitted. */
+export const CONNECTIONS_METRIC_FIELDS = {
+  bytes: 'network.bytes',
+  packets: 'network.packets',
+} as const;
+
+// Node fill by which side of the pair the value was seen on. Hex (not EUI
+// semantic names) because these are consumed by the canvas renderer.
+export const CONNECTION_ROLE_COLORS: Record<string, string> = {
+  source: '#0077CC',
+  target: '#54B399',
+  both: '#9170B8',
+};
 
 export const DEVICE_TYPE_CONFIG: Record<string, { color: string; icon: string }> = {
   router: { color: '#0077CC', icon: 'node' },
