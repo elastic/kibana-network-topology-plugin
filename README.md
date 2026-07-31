@@ -12,7 +12,7 @@ A Kibana Observability plugin for **network monitoring and topology mapping**. C
 
 - **Site overview** — Health card grid showing aggregated device and interface status per site
 - **Interactive topology graph** — Canvas-based, D3 force-directed layout with zoom, pan, drag, and node type visibility toggles
-- **Connections view** — Arkime-style relationship graph between any two aggregatable fields (`source.ip` → `destination.ip` by default), sized by session volume, with click-to-inspect, 1-hop focus, and field-pair pivoting
+- **Connections view** — Arkime-style force-directed relationship graph between any two aggregatable ECS fields (`source.ip` → `destination.ip` by default), sized by session volume, with click-to-inspect, 1-hop focus, field-pair pivoting, inline KQL filter buttons, and Security app deep links
 - **Device detail flyout** — Interface table, ARP neighbors, BGP peer sessions, OSPF adjacencies
 - **Device inventory list** — Searchable, paginated table of all devices with KQL filtering
 - **Multi-layer topology discovery** — L2 (MAC table), L3 (ARP), BGP overlay, and OSPF adjacency links
@@ -212,12 +212,17 @@ value appeared on the left, the right, or both.
 
 **Interactions**
 
-- **Click** a node for a flyout: totals, peer table, and hide/focus/copy actions
-- **Focus** filters to that node's 1-hop neighbourhood; **double-click** the
-  background to clear focus and selection
-- **Drag** a node to pin it (pins survive refreshes); **Release pins** re-runs the layout
+- **Click** a node to open the detail flyout:
+  - Node totals (sessions, bytes, packets, peer count) and role badge
+  - Node title links directly to the Security app — IP addresses open the Network IP detail page (source or destination view), hostnames open Hosts, usernames open Users
+  - Peer table with direction, session count, and bytes per link
+  - **`+` / `−` filter buttons** on each peer row — adds a KQL `match_phrase` inclusion or exclusion filter to the search bar instantly; the graph re-fetches behind the open flyout so you can stack filters without closing it
+  - Hide node, Focus, and Copy value actions
+- **Focus** narrows the canvas to a node's 1-hop neighbourhood; **double-click** the background to clear focus and selection
+- **Drag** a node to pin it in place (pins survive data refreshes); **Release pins** drops all pins and re-runs the layout
 - Scroll to zoom, drag the background to pan
-- Labels appear as you zoom in, so large graphs stay legible
+- **Show labels** toggle displays or hides node ID labels independently of zoom level
+- Disconnected components (island pairs, isolated clusters) are automatically separated into distinct regions of the canvas on initial load
 
 **Limits.** `Top sources` and `Peers each` are clamped server-side (200 × 25). When
 more pairs match than were returned, a callout says so — narrow the time range or
