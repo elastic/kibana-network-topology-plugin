@@ -66,10 +66,7 @@ export function registerConnectionsRoutes(router: IRouter, logger: Logger) {
           // Clamped here, not in the schema: an over-large request is trimmed to
           // something safe rather than rejected.
           maxSources: clamp(request.query.maxSources, CONNECTIONS_LIMITS.maxSources),
-          maxDstPerSource: clamp(
-            request.query.maxDstPerSource,
-            CONNECTIONS_LIMITS.maxDstPerSource
-          ),
+          maxDstPerSource: clamp(request.query.maxDstPerSource, CONNECTIONS_LIMITS.maxDstPerSource),
           minSessions: Math.max(1, Math.floor(request.query.minSessions)),
           logger,
         });

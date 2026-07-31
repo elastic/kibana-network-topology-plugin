@@ -186,9 +186,7 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
   const fieldOptions = useMemo(() => {
     const fields = selectedDataView?.fields ?? [];
     return fields
-      .filter(
-        (f) => f.aggregatable && PIVOTABLE_FIELD_TYPES.has(f.type) && !f.name.startsWith('_')
-      )
+      .filter((f) => f.aggregatable && PIVOTABLE_FIELD_TYPES.has(f.type) && !f.name.startsWith('_'))
       .map((f) => ({ label: f.name }))
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [selectedDataView]);

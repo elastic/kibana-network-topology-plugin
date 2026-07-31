@@ -117,17 +117,19 @@ function flow({ srcIp, dstIp, dstPort, transport = 'tcp', host, user, bytes, pac
   return {
     '@timestamp': someTime(),
     event: { category: 'network', kind: 'event', duration: rnd(5_000_000_000), outcome: 'success' },
+    // The directional split is cosmetic; network.bytes/packets is what the
+    // Connections view sums. Floored at 1 so a 2-packet flow isn't "0 packets".
     source: {
       ip: srcIp,
       port: ephemeralPort(),
-      bytes: Math.floor(b * 0.4),
-      packets: Math.floor(p * 0.4),
+      bytes: Math.max(1, Math.floor(b * 0.4)),
+      packets: Math.max(1, Math.floor(p * 0.4)),
     },
     destination: {
       ip: dstIp,
       port: dstPort,
-      bytes: Math.floor(b * 0.6),
-      packets: Math.floor(p * 0.6),
+      bytes: Math.max(1, Math.floor(b * 0.6)),
+      packets: Math.max(1, Math.floor(p * 0.6)),
     },
     // client/server mirror source/destination so the "Client IP → Server IP"
     // preset works against this data too.
@@ -146,7 +148,7 @@ const docs = [];
 // high-degree and the clients tight satellites around them.
 for (const client of CLIENTS) {
   for (const hub of HUBS) {
-    const sessions = 2 + rnd(6);
+    const sessions = 8 + rnd(14);
     for (let s = 0; s < sessions; s++) {
       docs.push(
         flow({
@@ -163,7 +165,7 @@ for (const client of CLIENTS) {
 }
 
 // Hub → hub chatter (web tier talking to the database), so hubs are 'both'.
-for (let i = 0; i < 40; i++) {
+for (let i = 0; i < 120; i++) {
   docs.push(
     flow({
       srcIp: HUBS[0].ip,
@@ -176,7 +178,7 @@ for (let i = 0; i < 40; i++) {
 }
 
 // Egress to the internet from a handful of clients.
-for (let i = 0; i < 120; i++) {
+for (let i = 0; i < 400; i++) {
   const client = pick(CLIENTS);
   docs.push(
     flow({
@@ -205,9 +207,12 @@ for (let i = 1; i <= 200; i++) {
   );
 }
 
-// Islands: pairs that only ever talk to each other.
+// Islands: pairs that only ever talk to each other (pollers, backup replication,
+// site-to-site tunnels). Volume is deliberately comparable to a busy client — at
+// the default "Top sources" of 50 a low-volume source never makes the cut, and
+// the islands are the whole reason this dataset shows meaningful clustering.
 for (const island of ISLANDS) {
-  const sessions = 3 + rnd(5);
+  const sessions = 65 + rnd(25);
   for (let s = 0; s < sessions; s++) {
     docs.push(
       flow({

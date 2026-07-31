@@ -501,8 +501,10 @@ export const ConnectionsCanvas: React.FC<Props> = ({
     select(baseCanvas).on('dblclick.zoom', null);
     select(baseCanvas).call(zoomBehavior.transform, transform);
 
-    /** Zoom-to-fit once, when the first layout settles and nothing else owns the view. */
-    function fitToView() {
+    // Zoom-to-fit once, when the first layout settles and nothing else owns the
+    // view. An arrow const rather than a function declaration so TypeScript keeps
+    // the non-null narrowing of `baseCanvas` from the guard at the top.
+    const fitToView = () => {
       if (viewEstablished) return;
       viewEstablished = true;
       let minX = Infinity;
@@ -526,7 +528,7 @@ export const ConnectionsCanvas: React.FC<Props> = ({
         .scale(scale);
       // Routed through d3-zoom so later gestures compose with this transform.
       select(baseCanvas).call(zoomBehavior.transform, fitted);
-    }
+    };
 
     if (animationsDisabled) {
       // Same visual contract as topology_canvas's flag: solve the layout up front
