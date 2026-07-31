@@ -29,6 +29,10 @@ export interface BuildConnectionsOptions {
   maxSources: number;
   maxDstPerSource: number;
   minSessions: number;
+  /** Optional field to distinguish same-value entities across different network contexts. */
+  groupField?: string;
+  /** Top-K group values. No server-side cap; ES surfaces the error on oversized requests. */
+  maxGroups?: number;
   logger: Logger;
 }
 
@@ -51,6 +55,70 @@ interface SrcBucket {
   key: string | number;
   doc_count: number;
   dst?: TermsAggResult<DstBucket>;
+}
+
+/** Group-level bucket when a `groupField` three-level agg is used. */
+interface GroupBucket {
+  key: string | number;
+  doc_count: number;
+  src?: TermsAggResult<SrcBucket>;
+}
+
+/**
+ * Flattens a three-level `group → src → dst` agg into the two-level `src → dst`
+ * shape that `shapeConnectionsGraph` expects, prefixing every source bucket key
+ * with `{group}::` so same-IP entities in different groups get distinct node IDs.
+ *
+ * `sum_other_doc_count` from any level propagates as a truncation signal: if any
+ * group or source bucket was capped, we merge the counts into the flattened agg's
+ * outer `sum_other_doc_count` so the truncation callout fires correctly.
+ */
+export function prefixGroupedSources(
+  groupAgg: TermsAggResult<GroupBucket> | undefined
+): TermsAggResult<SrcBucket> {
+  if (!groupAgg?.buckets?.length) {
+    return { buckets: [], sum_other_doc_count: groupAgg?.sum_other_doc_count ?? 0 };
+  }
+
+  const flatSrcMap = new Map<string, SrcBucket>();
+  let truncated = Boolean(groupAgg.sum_other_doc_count);
+
+  for (const groupBucket of groupAgg.buckets) {
+    const groupKey = String(groupBucket.key);
+    if (groupBucket.src?.sum_other_doc_count) truncated = true;
+
+    for (const srcBucket of groupBucket.src?.buckets ?? []) {
+      const prefixedKey = `${groupKey}::${String(srcBucket.key)}`;
+      const existing = flatSrcMap.get(prefixedKey);
+
+      // Merge into any existing entry for this prefixed source (in practice each
+      // group+src combination is unique, but merge defensively).
+      if (existing) {
+        existing.doc_count += srcBucket.doc_count;
+        if (existing.dst && srcBucket.dst) {
+          // Append dst buckets — shapeConnectionsGraph will deduplicate by id.
+          existing.dst.buckets = [...(existing.dst.buckets ?? []), ...(srcBucket.dst.buckets ?? [])];
+          if (srcBucket.dst.sum_other_doc_count) {
+            existing.dst.sum_other_doc_count =
+              (existing.dst.sum_other_doc_count ?? 0) + srcBucket.dst.sum_other_doc_count;
+          }
+        }
+      } else {
+        flatSrcMap.set(prefixedKey, {
+          key: prefixedKey,
+          doc_count: srcBucket.doc_count,
+          dst: srcBucket.dst
+            ? { ...srcBucket.dst, buckets: [...(srcBucket.dst.buckets ?? [])] }
+            : undefined,
+        });
+      }
+    }
+  }
+
+  return {
+    buckets: [...flatSrcMap.values()],
+    sum_other_doc_count: truncated ? 1 : 0,
+  };
 }
 
 interface NodeAccumulator {
@@ -159,6 +227,9 @@ export function shapeConnectionsGraph(
     };
     if (anyBytes) node.bytes = entry.bytes;
     if (anyPackets) node.packets = entry.packets;
+    // Extract the group prefix from `{group}::value` source IDs.
+    const colonIdx = id.indexOf('::');
+    if (colonIdx >= 0) node.group = id.slice(0, colonIdx);
     return node;
   });
 
@@ -199,6 +270,8 @@ export async function buildConnectionsGraph(
     maxSources,
     maxDstPerSource,
     minSessions,
+    groupField,
+    maxGroups = 10,
     logger,
   } = options;
 
@@ -234,28 +307,54 @@ export async function buildConnectionsGraph(
     ignore_unavailable: true,
     allow_no_indices: true,
     query: { bool: { filter: esFilters } },
-    aggs: {
-      // Deliberately no `min_doc_count` here even though minSessions would map
-      // onto it: terms dropped by min_doc_count also count towards
-      // `sum_other_doc_count`, which would make the "showing a top-N sample"
-      // signal fire for every request with minSessions > 1. The threshold is
-      // applied to the flattened links instead.
-      src: {
-        terms: { field: srcField, size: maxSources, order: { _count: 'desc' } },
-        aggs: {
-          dst: {
-            terms: { field: dstField, size: maxDstPerSource, order: { _count: 'desc' } },
+    aggs: groupField
+      ? // Three-level agg: group → src → dst. `prefixGroupedSources` flattens it
+        // into the two-level shape `shapeConnectionsGraph` expects.
+        {
+          grp: {
+            terms: { field: groupField, size: maxGroups, order: { _count: 'desc' } },
             aggs: {
-              bytes: { sum: { field: CONNECTIONS_METRIC_FIELDS.bytes } },
-              packets: { sum: { field: CONNECTIONS_METRIC_FIELDS.packets } },
+              src: {
+                terms: { field: srcField, size: maxSources, order: { _count: 'desc' } },
+                aggs: {
+                  dst: {
+                    terms: { field: dstField, size: maxDstPerSource, order: { _count: 'desc' } },
+                    aggs: {
+                      bytes: { sum: { field: CONNECTIONS_METRIC_FIELDS.bytes } },
+                      packets: { sum: { field: CONNECTIONS_METRIC_FIELDS.packets } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }
+      : // Deliberately no `min_doc_count` here even though minSessions would map
+        // onto it: terms dropped by min_doc_count also count towards
+        // `sum_other_doc_count`, which would make the "showing a top-N sample"
+        // signal fire for every request with minSessions > 1. The threshold is
+        // applied to the flattened links instead.
+        {
+          src: {
+            terms: { field: srcField, size: maxSources, order: { _count: 'desc' } },
+            aggs: {
+              dst: {
+                terms: { field: dstField, size: maxDstPerSource, order: { _count: 'desc' } },
+                aggs: {
+                  bytes: { sum: { field: CONNECTIONS_METRIC_FIELDS.bytes } },
+                  packets: { sum: { field: CONNECTIONS_METRIC_FIELDS.packets } },
+                },
+              },
             },
           },
         },
-      },
-    },
   });
 
-  const graph = shapeConnectionsGraph(result.aggregations?.src as TermsAggResult<SrcBucket>, {
+  const flatSrc = groupField
+    ? prefixGroupedSources(result.aggregations?.grp as TermsAggResult<GroupBucket>)
+    : (result.aggregations?.src as TermsAggResult<SrcBucket>);
+
+  const graph = shapeConnectionsGraph(flatSrc, {
     minSessions,
     took: result.took ?? 0,
   });

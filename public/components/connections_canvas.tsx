@@ -14,6 +14,7 @@ import { select } from 'd3-selection';
 import type { ConnectionsGraph } from '../../common';
 import { CONNECTION_ROLE_COLORS } from '../../common';
 import { formatBytes, formatCount } from '../utils/format';
+import { buildGroupColorMap, nodeDisplayLabel } from '../utils/group_colors';
 
 interface Props {
   graph: ConnectionsGraph;
@@ -38,6 +39,7 @@ interface SimNode extends SimulationNodeDatum {
   bytes?: number;
   packets?: number;
   degree: number;
+  group?: string;
   /** Radius in graph space, derived from `sessions`. */
   r: number;
 }
@@ -293,9 +295,16 @@ export const ConnectionsCanvas: React.FC<Props> = ({
       if (list) list.push(link);
       else linksByWidth.set(bucket, [link]);
     }
+    // When a groupField is active, source nodes are coloured by group value.
+    // Destination nodes (no group prefix) keep their standard role colour.
+    const groupColorMap = buildGroupColorMap(graph.nodes);
+    const hasGroups = groupColorMap.size > 0;
     const nodesByColor = new Map<string, PlacedNode[]>();
     for (const node of nodes) {
-      const color = CONNECTION_ROLE_COLORS[node.role] ?? CONNECTION_ROLE_COLORS.both;
+      const color =
+        hasGroups && node.group
+          ? (groupColorMap.get(node.group) ?? CONNECTION_ROLE_COLORS.source)
+          : (CONNECTION_ROLE_COLORS[node.role] ?? CONNECTION_ROLE_COLORS.both);
       const list = nodesByColor.get(color);
       if (list) list.push(node);
       else nodesByColor.set(color, [node]);
@@ -421,8 +430,9 @@ export const ConnectionsCanvas: React.FC<Props> = ({
         const sx = toScreenX(node.x);
         const sy = toScreenY(node.y) + screenR + 3;
         if (sx < -60 || sx > width + 60 || sy < -10 || sy > height + 10) continue;
-        baseCtx.strokeText(node.id, sx, sy);
-        baseCtx.fillText(node.id, sx, sy);
+        const label = nodeDisplayLabel(node.id);
+        baseCtx.strokeText(label, sx, sy);
+        baseCtx.fillText(label, sx, sy);
         drawn++;
       }
       baseCtx.restore();
@@ -467,12 +477,13 @@ export const ConnectionsCanvas: React.FC<Props> = ({
       drawRing(hovered, HIGHLIGHT_COLOR);
 
       if (hovered) {
-        const lines = [
-          hovered.id,
+        const lines = [nodeDisplayLabel(hovered.id)];
+        if (hovered.group) lines.push(`Group: ${hovered.group}`);
+        lines.push(
           `Role: ${hovered.role}`,
           `Sessions: ${formatCount(hovered.sessions)}`,
-          `Peers: ${formatCount(hovered.degree)}`,
-        ];
+          `Peers: ${formatCount(hovered.degree)}`
+        );
         if (hovered.bytes !== undefined) lines.push(`Bytes: ${formatBytes(hovered.bytes)}`);
         if (hovered.packets !== undefined) lines.push(`Packets: ${formatCount(hovered.packets)}`);
 

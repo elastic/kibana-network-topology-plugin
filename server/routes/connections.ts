@@ -27,6 +27,14 @@ function isBadRequest(err: any): boolean {
   return err?.name === 'KQLSyntaxError' || err?.statusCode === 400 || err?.meta?.statusCode === 400;
 }
 
+/**
+ * Too many groups × sources × destinations can exceed ES's circuit-breaker for
+ * nested terms. Surface this as a descriptive 400 rather than an opaque 500.
+ */
+function isTooManyBuckets(err: any): boolean {
+  return err?.meta?.body?.error?.type === 'too_many_buckets_exception';
+}
+
 export function registerConnectionsRoutes(router: IRouter, logger: Logger) {
   router.get(
     {
@@ -47,11 +55,14 @@ export function registerConnectionsRoutes(router: IRouter, logger: Logger) {
             min: 1,
           }),
           minSessions: schema.number({ defaultValue: CONNECTIONS_DEFAULTS.minSessions, min: 1 }),
+          groupField: schema.maybe(schema.string({ maxLength: 256 })),
+          maxGroups: schema.number({ defaultValue: CONNECTIONS_DEFAULTS.maxGroups, min: 1 }),
         }),
       },
     },
     async (context, request, response) => {
-      const { index, srcField, dstField, from, to, kql, filters } = request.query;
+      const { index, srcField, dstField, from, to, kql, filters, groupField, maxGroups } =
+        request.query;
       try {
         const esClient = (await context.core).elasticsearch.client.asCurrentUser;
 
@@ -68,11 +79,23 @@ export function registerConnectionsRoutes(router: IRouter, logger: Logger) {
           maxSources: clamp(request.query.maxSources, CONNECTIONS_LIMITS.maxSources),
           maxDstPerSource: clamp(request.query.maxDstPerSource, CONNECTIONS_LIMITS.maxDstPerSource),
           minSessions: Math.max(1, Math.floor(request.query.minSessions)),
+          groupField: groupField || undefined,
+          maxGroups: Math.max(1, Math.floor(maxGroups)),
           logger,
         });
 
         return response.ok({ body: graph });
       } catch (err) {
+        if (isTooManyBuckets(err)) {
+          logger.debug(`Connections route: too_many_buckets (${srcField} → ${dstField}): ${err}`);
+          return response.badRequest({
+            body: {
+              message:
+                `Elasticsearch rejected the request because too many buckets were requested. ` +
+                `Lower "Max groups", "Top sources", or "Peers each" and try again. (${err.message ?? err})`,
+            },
+          });
+        }
         if (isBadRequest(err)) {
           logger.debug(`Connections route rejected request (${srcField} → ${dstField}): ${err}`);
           return response.badRequest({

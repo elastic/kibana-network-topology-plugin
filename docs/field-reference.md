@@ -33,6 +33,8 @@ The Connections view aggregates over **any** index pattern selected in the data 
 
 > **`multi_terms` is deliberately not used.** Nested `terms` aggregations are used instead. `multi_terms` materialises a composite key for every left×right combination and cannot use global ordinals, making it impractical on realistic flow data volumes.
 
+> **Group by (diversity field).** When a "Group by" field is configured in the toolbar, a three-level `terms` aggregation is used: `group → source → destination`. Source nodes are prefixed with `{group}::` internally so that the same IP address (e.g. `172.18.0.1`) in two different Docker networks appears as two distinct nodes coloured differently. Destination nodes remain ungrouped and are shared across groups, making cross-group communication naturally visible. The group field can be any aggregatable field — common choices: `observer.hostname`, `network.site`, or a customer-defined site/tenant identifier. Keep "Max groups" low (≤ 20) to avoid Elasticsearch `too_many_buckets_exception` errors.
+
 ---
 
 ## Base Fields

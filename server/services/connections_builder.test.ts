@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { shapeConnectionsGraph } from './connections_builder';
+import { shapeConnectionsGraph, prefixGroupedSources } from './connections_builder';
 
 /** Inner (destination) terms bucket, as Elasticsearch returns it. */
 function dstBucket(key: string | number, docCount: number, bytes = 0, packets = 0) {
@@ -168,5 +168,106 @@ describe('shapeConnectionsGraph', () => {
   it('returns an empty graph when there are no buckets', () => {
     expect(shape(agg([]))).toEqual({ nodes: [], links: [], truncated: false, took: 7 });
     expect(shape(undefined)).toEqual({ nodes: [], links: [], truncated: false, took: 7 });
+  });
+
+  it('extracts the group from a prefixed source node id', () => {
+    const graph = shape(
+      agg([
+        srcBucket('site-a::10.0.0.1', [dstBucket('10.0.0.2', 5)]),
+        srcBucket('site-b::10.0.0.1', [dstBucket('10.0.0.2', 3)]),
+      ])
+    );
+
+    const siteA = graph.nodes.find((n) => n.id === 'site-a::10.0.0.1');
+    const siteB = graph.nodes.find((n) => n.id === 'site-b::10.0.0.1');
+    const dst = graph.nodes.find((n) => n.id === '10.0.0.2');
+
+    expect(siteA?.group).toBe('site-a');
+    expect(siteB?.group).toBe('site-b');
+    // Shared destination has no group prefix → no group field
+    expect(dst?.group).toBeUndefined();
+  });
+});
+
+// ── Helper builders for the three-level (group → src → dst) agg shape ────────
+
+function groupDstBucket(key: string | number, docCount: number, bytes = 0, packets = 0) {
+  return { key, doc_count: docCount, bytes: { value: bytes }, packets: { value: packets } };
+}
+
+function groupSrcBucket(
+  key: string | number,
+  dsts: ReturnType<typeof groupDstBucket>[],
+  sumOtherDocCount = 0
+) {
+  return {
+    key,
+    doc_count: dsts.reduce((t, d) => t + d.doc_count, 0),
+    dst: { buckets: dsts, sum_other_doc_count: sumOtherDocCount },
+  };
+}
+
+function groupBucket(
+  key: string | number,
+  srcs: ReturnType<typeof groupSrcBucket>[],
+  sumOtherDocCount = 0
+) {
+  return {
+    key,
+    doc_count: srcs.reduce((t, s) => t + s.doc_count, 0),
+    src: { buckets: srcs, sum_other_doc_count: sumOtherDocCount },
+  };
+}
+
+function groupAgg(
+  groups: ReturnType<typeof groupBucket>[],
+  sumOtherDocCount = 0
+) {
+  return { buckets: groups, sum_other_doc_count: sumOtherDocCount };
+}
+
+describe('prefixGroupedSources', () => {
+  it('prefixes source bucket keys with the group key', () => {
+    const result = prefixGroupedSources(
+      groupAgg([
+        groupBucket('site-a', [
+          groupSrcBucket('10.0.0.1', [groupDstBucket('10.0.0.2', 5)]),
+        ]),
+        groupBucket('site-b', [
+          groupSrcBucket('10.0.0.1', [groupDstBucket('10.0.0.2', 3)]),
+        ]),
+      ])
+    );
+
+    const keys = result.buckets?.map((b) => b.key).sort();
+    expect(keys).toEqual(['site-a::10.0.0.1', 'site-b::10.0.0.1']);
+  });
+
+  it('propagates dst buckets under the prefixed source', () => {
+    const result = prefixGroupedSources(
+      groupAgg([
+        groupBucket('grp', [
+          groupSrcBucket('src', [groupDstBucket('dst', 7, 100, 5)]),
+        ]),
+      ])
+    );
+
+    const srcBkt = result.buckets?.find((b) => b.key === 'grp::src');
+    expect(srcBkt?.dst?.buckets).toHaveLength(1);
+    expect(srcBkt?.dst?.buckets?.[0]).toMatchObject({ key: 'dst', doc_count: 7 });
+  });
+
+  it('sets truncated flag when any level has sum_other_doc_count > 0', () => {
+    const cappedGroups = prefixGroupedSources(groupAgg([], 1));
+    expect(cappedGroups.sum_other_doc_count).toBeGreaterThan(0);
+
+    const cappedSrc = prefixGroupedSources(
+      groupAgg([groupBucket('g', [groupSrcBucket('s', [groupDstBucket('d', 1)])], 2)])
+    );
+    expect(cappedSrc.sum_other_doc_count).toBeGreaterThan(0);
+  });
+
+  it('returns an empty result for undefined input', () => {
+    expect(prefixGroupedSources(undefined)).toEqual({ buckets: [], sum_other_doc_count: 0 });
   });
 });

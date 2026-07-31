@@ -47,7 +47,27 @@ export const CONNECTIONS_DEFAULTS = {
   maxSources: 50,
   maxDstPerSource: 10,
   minSessions: 1,
+  maxGroups: 10,
 } as const;
+
+/**
+ * Categorical colour palette for group-coloured source nodes.
+ * Dark-background friendly; chosen to be perceptually distinct at small node sizes.
+ */
+export const CONNECTION_GROUP_PALETTE: string[] = [
+  '#1BA9F5', // vivid blue
+  '#F5A623', // amber
+  '#D36086', // rose
+  '#9170B8', // purple
+  '#00BFB3', // teal
+  '#F86B63', // coral
+  '#54B399', // sage green
+  '#E4D234', // yellow
+  '#6092C0', // steel blue
+  '#C47C15', // burnt orange
+  '#DB1374', // magenta
+  '#70C36D', // lime green
+];
 
 // Hard ceilings applied server-side regardless of request params. maxSources ×
 // maxDstPerSource bounds the link count, which is what protects Elasticsearch

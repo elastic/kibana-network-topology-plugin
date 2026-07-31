@@ -41,6 +41,7 @@ import {
 import { ConnectionsCanvas } from '../components/connections_canvas';
 import { ConnectionNodeFlyout } from '../components/connection_node_flyout';
 import { formatCount } from '../utils/format';
+import { buildGroupColorMap } from '../utils/group_colors';
 
 // Matches topology_view: above this size animations auto-disable to protect
 // against perf cliffs. Users can always override via the toolbar switch.
@@ -87,6 +88,8 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
     CONNECTIONS_DEFAULTS.maxDstPerSource
   );
   const [minSessions, setMinSessions] = useState<number>(CONNECTIONS_DEFAULTS.minSessions);
+  const [groupField, setGroupField] = useState<string>('');
+  const [maxGroups, setMaxGroups] = useState<number>(CONNECTIONS_DEFAULTS.maxGroups);
 
   // query drives the SearchBar display; submittedQuery drives the actual fetch
   const [query, setQuery] = useState<Query>({ language: 'kuery', query: '' });
@@ -147,6 +150,8 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
             CONNECTIONS_LIMITS.maxDstPerSource
           ),
           minSessions: Math.max(1, minSessions),
+          groupField: groupField || undefined,
+          maxGroups: Math.max(1, maxGroups),
         })
         .then((g) => {
           if (cancelled) return;
@@ -177,16 +182,18 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
     maxSources,
     maxDstPerSource,
     minSessions,
+    groupField,
+    maxGroups,
     refreshKey,
   ]);
 
-  // Any new field pair is a different graph — stale focus/hide/selection would
-  // silently filter it.
+  // Any new field pair or group change is a different graph — stale focus/hide/selection
+  // would silently filter the new result.
   useEffect(() => {
     setSelectedNodeId(null);
     setFocusNodeId(null);
     setHiddenNodes(new Set());
-  }, [srcField, dstField, indexPattern]);
+  }, [srcField, dstField, groupField, indexPattern]);
 
   const fieldOptions = useMemo(() => {
     const fields = selectedDataView?.fields ?? [];
@@ -303,6 +310,12 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
 
   const isLargeGraph = (displayed?.graph.nodes.length ?? 0) >= LARGE_GRAPH_NODE_THRESHOLD;
   const animationsDisabled = animationsUserPref ?? isLargeGraph;
+
+  // When a groupField is active, build the group→colour map for the legend.
+  const groupColorMap = useMemo(
+    () => (graph && groupField ? buildGroupColorMap(graph.nodes) : new Map<string, string>()),
+    [graph, groupField]
+  );
 
   return (
     <div style={{ alignSelf: 'flex-start', width: '100%' }}>
@@ -437,9 +450,77 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
             />
           </EuiFormRow>
         </EuiFlexItem>
+
+        <EuiFlexItem grow={false} style={{ minWidth: 220 }}>
+          <EuiFormRow
+            label="Group by"
+            display="rowCompressed"
+            labelAppend={
+              <EuiIconTip
+                type="questionInCircle"
+                color="subdued"
+                content="Disambiguate same-IP or same-hostname entities across different contexts (e.g. observer.hostname, network.site). Source nodes are coloured by group value."
+                aria-label="About group by"
+              />
+            }
+          >
+            <EuiComboBox
+              compressed
+              singleSelection={{ asPlainText: true }}
+              isClearable={true}
+              options={fieldOptions}
+              selectedOptions={groupField ? [{ label: groupField }] : []}
+              onChange={(opts) => setGroupField(opts[0]?.label ?? '')}
+              onCreateOption={(value) => setGroupField(value.trim())}
+              placeholder="None (optional)"
+              aria-label="Group by field"
+            />
+          </EuiFormRow>
+        </EuiFlexItem>
+
+        {groupField && (
+          <EuiFlexItem grow={false} style={{ width: 130 }}>
+            <EuiFormRow
+              label="Max groups"
+              display="rowCompressed"
+              labelAppend={
+                <EuiIconTip
+                  type="questionInCircle"
+                  color="subdued"
+                  content="Top-K group values retained. Large values may trigger an Elasticsearch circuit-breaker; lower this or reduce sources/peers if you see an error."
+                  aria-label="About max groups"
+                />
+              }
+            >
+              <EuiFieldNumber
+                compressed
+                min={1}
+                value={maxGroups}
+                onChange={(e) => setMaxGroups(Number(e.target.value))}
+              />
+            </EuiFormRow>
+          </EuiFlexItem>
+        )}
       </EuiFlexGroup>
 
       <EuiSpacer size="m" />
+
+      {groupField && maxGroups * maxSources * maxDstPerSource > 10_000 && (
+        <>
+          <EuiCallOut
+            title="Large aggregation — expect slow queries or Elasticsearch circuit-breaker errors"
+            color="warning"
+            size="s"
+          >
+            <p>
+              {maxGroups} groups × {maxSources} sources × {maxDstPerSource} peers ={' '}
+              {(maxGroups * maxSources * maxDstPerSource).toLocaleString()} potential buckets.
+              Lower the limits or narrow the time range before fetching.
+            </p>
+          </EuiCallOut>
+          <EuiSpacer size="m" />
+        </>
+      )}
 
       {error && (
         <>
@@ -556,11 +637,23 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
             <EuiFlexItem />
             <EuiFlexItem grow={false}>
               <EuiFlexGroup gutterSize="xs" alignItems="center" responsive={false}>
-                {(['source', 'both', 'destination'] as const).map((role) => (
-                  <EuiFlexItem grow={false} key={role}>
-                    <EuiBadge color={CONNECTION_ROLE_COLORS[role]}>{role}</EuiBadge>
-                  </EuiFlexItem>
-                ))}
+                {groupColorMap.size > 0
+                  ? // Group-coloured legend: one badge per group value + destination
+                    [...groupColorMap.entries()].map(([g, color]) => (
+                      <EuiFlexItem grow={false} key={g}>
+                        <EuiBadge color={color}>{g}</EuiBadge>
+                      </EuiFlexItem>
+                    )).concat(
+                      <EuiFlexItem grow={false} key="destination">
+                        <EuiBadge color={CONNECTION_ROLE_COLORS.destination}>destination</EuiBadge>
+                      </EuiFlexItem>
+                    )
+                  : // Standard role legend
+                    (['source', 'both', 'destination'] as const).map((role) => (
+                      <EuiFlexItem grow={false} key={role}>
+                        <EuiBadge color={CONNECTION_ROLE_COLORS[role]}>{role}</EuiBadge>
+                      </EuiFlexItem>
+                    ))}
               </EuiFlexGroup>
             </EuiFlexItem>
             <EuiFlexItem grow={false}>

@@ -79,7 +79,7 @@ export interface TopologyGraph {
 export type ConnectionRole = 'source' | 'destination' | 'both';
 
 export interface ConnectionsNode {
-  /** Field value, e.g. "10.1.2.3" */
+  /** Field value, e.g. "10.1.2.3". Source nodes include a `{group}::` prefix when a groupField is active. */
   id: string;
   role: ConnectionRole;
   /** Total doc_count across every link touching this node */
@@ -89,6 +89,8 @@ export interface ConnectionsNode {
   packets?: number;
   /** Number of links touching this node */
   degree: number;
+  /** Set on source nodes when a groupField is active; extracted from the `{group}::` id prefix. */
+  group?: string;
 }
 
 export interface ConnectionsLink {
@@ -128,6 +130,10 @@ export interface ConnectionsRequest {
   maxDstPerSource: number;
   /** Drop links below this session count */
   minSessions: number;
+  /** Optional field to distinguish same-value entities across different network contexts (e.g. observer.hostname, network.site). Source nodes are prefixed `{group}::` when set. */
+  groupField?: string;
+  /** Top-K groups retained in the three-level aggregation. No hard cap — oversized requests surface the ES error. */
+  maxGroups?: number;
 }
 
 export interface SiteHealth {

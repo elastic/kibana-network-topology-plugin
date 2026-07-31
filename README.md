@@ -224,9 +224,13 @@ value appeared on the left, the right, or both.
 - **Show labels** toggle displays or hides node ID labels independently of zoom level
 - Disconnected components (island pairs, isolated clusters) are automatically separated into distinct regions of the canvas on initial load
 
+**Group by (diversity field).** Set the optional "Group by" field to disambiguate same-IP or same-hostname entities that actually belong to different network contexts (Docker bridges, overlapping VLANs, multi-tenant environments). When active, a three-level aggregation (`group → source → destination`) is used: source nodes are coloured by group value, destination nodes remain shared. Cross-group communication is naturally visible wherever two group-coloured nodes point at the same destination. Any aggregatable field works — `observer.hostname`, `network.site`, or a customer-specific tenant field are common choices.
+
 **Limits.** `Top sources` and `Peers each` are clamped server-side (200 × 25). When
 more pairs match than were returned, a callout says so — narrow the time range or
-add a filter rather than raising the caps.
+add a filter rather than raising the caps. `Max groups` has no hard cap — the
+Elasticsearch `too_many_buckets_exception` error surfaces if the product of groups
+× sources × peers is too large; lower any of the three limits to resolve it.
 
 ---
 

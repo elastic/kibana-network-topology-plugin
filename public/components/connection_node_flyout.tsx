@@ -28,6 +28,7 @@ import {
 import type { ConnectionsGraph, ConnectionsNode } from '../../common';
 import { CONNECTION_ROLE_COLORS } from '../../common';
 import { formatBytes, formatCount } from '../utils/format';
+import { nodeDisplayLabel } from '../utils/group_colors';
 
 interface Props {
   node: ConnectionsNode;
@@ -100,9 +101,12 @@ export const ConnectionNodeFlyout: React.FC<Props> = ({
     [graph.links, node.id]
   );
 
+  // Strip `{group}::` prefix for display and Security URL construction.
+  const displayId = nodeDisplayLabel(node.id);
+
   // 'both' defaults to the source view (Security's "View as" dropdown handles the rest).
   const activeField = node.role === 'destination' ? dstField : srcField;
-  const secHref = toSecurityHref(activeField, node.id, getSecurityUrl);
+  const secHref = toSecurityHref(activeField, displayId, getSecurityUrl);
 
   const seenAs =
     node.role === 'both'
@@ -111,12 +115,15 @@ export const ConnectionNodeFlyout: React.FC<Props> = ({
       ? srcField
       : dstField;
 
-  const details = [
+  const details: Array<{ title: string; description: string }> = [
     { title: 'Role', description: node.role },
     { title: 'Seen in', description: seenAs },
-    { title: 'Sessions', description: formatCount(node.sessions) },
-    { title: 'Peers', description: formatCount(node.degree) },
   ];
+  if (node.group) details.push({ title: 'Group', description: node.group });
+  details.push(
+    { title: 'Sessions', description: formatCount(node.sessions) },
+    { title: 'Peers', description: formatCount(node.degree) }
+  );
   if (node.bytes !== undefined) {
     details.push({ title: 'Bytes', description: formatBytes(node.bytes) });
   }
@@ -138,10 +145,10 @@ export const ConnectionNodeFlyout: React.FC<Props> = ({
               <h2 style={{ fontFamily: 'monospace' }}>
                 {secHref ? (
                   <EuiLink href={secHref} target="_blank">
-                    {node.id}
+                    {displayId}
                   </EuiLink>
                 ) : (
-                  node.id
+                  displayId
                 )}
               </h2>
             </EuiTitle>
@@ -176,7 +183,7 @@ export const ConnectionNodeFlyout: React.FC<Props> = ({
               name: 'Peer',
               render: (peer: string) => (
                 <EuiText size="s" style={{ fontFamily: 'monospace' }}>
-                  {peer}
+                  {nodeDisplayLabel(peer)}
                 </EuiText>
               ),
             },
@@ -190,9 +197,13 @@ export const ConnectionNodeFlyout: React.FC<Props> = ({
                       iconType="plusInCircle"
                       color="primary"
                       size="xs"
-                      aria-label={`Include ${row.peer}`}
+                      aria-label={`Include ${nodeDisplayLabel(row.peer)}`}
                       onClick={() =>
-                        onAddFilter(row.outbound ? dstField : srcField, row.peer, false)
+                        onAddFilter(
+                          row.outbound ? dstField : srcField,
+                          nodeDisplayLabel(row.peer),
+                          false
+                        )
                       }
                     />
                   </EuiFlexItem>
@@ -201,9 +212,13 @@ export const ConnectionNodeFlyout: React.FC<Props> = ({
                       iconType="minusInCircle"
                       color="danger"
                       size="xs"
-                      aria-label={`Exclude ${row.peer}`}
+                      aria-label={`Exclude ${nodeDisplayLabel(row.peer)}`}
                       onClick={() =>
-                        onAddFilter(row.outbound ? dstField : srcField, row.peer, true)
+                        onAddFilter(
+                          row.outbound ? dstField : srcField,
+                          nodeDisplayLabel(row.peer),
+                          true
+                        )
                       }
                     />
                   </EuiFlexItem>
@@ -236,7 +251,7 @@ export const ConnectionNodeFlyout: React.FC<Props> = ({
           <EuiFlexItem grow={false}>
             <EuiFlexGroup gutterSize="s" responsive={false}>
               <EuiFlexItem grow={false}>
-                <EuiCopy textToCopy={node.id}>
+                <EuiCopy textToCopy={displayId}>
                   {(copy) => (
                     <EuiButtonEmpty iconType="copyClipboard" onClick={copy}>
                       Copy value
