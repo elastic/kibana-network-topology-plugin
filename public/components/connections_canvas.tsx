@@ -27,6 +27,8 @@ interface Props {
   releasePinsKey?: number;
   /** When true the layout is solved synchronously and painted once, with no per-frame work. */
   animationsDisabled: boolean;
+  /** When false, node ID labels are hidden regardless of zoom level. Defaults to true. */
+  showLabels?: boolean;
 }
 
 interface SimNode extends SimulationNodeDatum {
@@ -138,6 +140,7 @@ export const ConnectionsCanvas: React.FC<Props> = ({
   selectedNodeId,
   releasePinsKey = 0,
   animationsDisabled,
+  showLabels = true,
 }) => {
   // Two stacked canvases, same contract as topology_canvas: the base holds the
   // graph itself (repainted per simulation tick), the overlay holds selection,
@@ -152,7 +155,9 @@ export const ConnectionsCanvas: React.FC<Props> = ({
   const pinsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const appliedReleaseKeyRef = useRef(releasePinsKey);
   const selectedNodeRef = useRef<string | null>(selectedNodeId);
+  const showLabelsRef = useRef(showLabels);
   const redrawOverlayRef = useRef<(() => void) | null>(null);
+  const redrawBaseRef = useRef<(() => void) | null>(null);
   // Persists zoom/pan across data refreshes; dropped when the canvas is resized.
   const transformRef = useRef<ZoomTransform | null>(null);
   const savedDimKeyRef = useRef<string | null>(null);
@@ -162,6 +167,12 @@ export const ConnectionsCanvas: React.FC<Props> = ({
     selectedNodeRef.current = selectedNodeId;
     redrawOverlayRef.current?.();
   }, [selectedNodeId]);
+
+  // Label toggle only needs a base repaint — no layout change.
+  useEffect(() => {
+    showLabelsRef.current = showLabels;
+    redrawBaseRef.current?.();
+  }, [showLabels]);
 
   useEffect(() => {
     const baseCanvas = baseRef.current;
@@ -195,8 +206,51 @@ export const ConnectionsCanvas: React.FC<Props> = ({
     const radiusOf = sqrtScale(maxNodeSessions, MIN_R, MAX_R);
     const widthOf = sqrtScale(maxLinkSessions, MIN_LINK_W, MAX_LINK_W);
 
+    // ── Connected-component detection ──────────────────────────────────────
+    // BFS over the raw graph data (string ids) before SimNode objects exist.
+    // Each component gets its own grid cell so islands start and stay separated
+    // rather than collapsing onto the single shared centre attractor.
+    const graphAdj = new Map<string, string[]>();
+    for (const n of graph.nodes) graphAdj.set(n.id, []);
+    for (const l of graph.links) {
+      graphAdj.get(l.source)?.push(l.target);
+      graphAdj.get(l.target)?.push(l.source);
+    }
+    const nodeComp = new Map<string, number>();
+    let numComps = 0;
+    for (const n of graph.nodes) {
+      if (nodeComp.has(n.id)) continue;
+      const queue = [n.id];
+      while (queue.length) {
+        const cur = queue.pop()!;
+        if (nodeComp.has(cur)) continue;
+        nodeComp.set(cur, numComps);
+        for (const nb of graphAdj.get(cur) ?? []) {
+          if (!nodeComp.has(nb)) queue.push(nb);
+        }
+      }
+      numComps++;
+    }
+    // Largest component first so it gets the top-left cell (most prominent).
+    const compSize = new Map<number, number>();
+    for (const cid of nodeComp.values()) compSize.set(cid, (compSize.get(cid) ?? 0) + 1);
+    const sortedCids = [...compSize.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c);
+    const gridCols = Math.max(1, Math.ceil(Math.sqrt(numComps)));
+    const gridRows = Math.max(1, Math.ceil(numComps / gridCols));
+    const compCenter = new Map<number, { cx: number; cy: number }>();
+    sortedCids.forEach((cid, rank) => {
+      const col = rank % gridCols;
+      const row = Math.floor(rank / gridCols);
+      compCenter.set(cid, {
+        cx: (col + 0.5) * (width / gridCols),
+        cy: (row + 0.5) * (height / gridRows),
+      });
+    });
+    // Per-component counter for phyllotaxis seeding within each cell.
+    const compSeedIdx = new Map<number, number>();
+
     let carriedOver = 0;
-    const nodes: PlacedNode[] = graph.nodes.map((n, i) => {
+    const nodes: PlacedNode[] = graph.nodes.map((n) => {
       const node: SimNode = { ...n, r: radiusOf(n.sessions) };
       const saved = positionsRef.current.get(n.id);
       if (saved) {
@@ -204,12 +258,16 @@ export const ConnectionsCanvas: React.FC<Props> = ({
         node.y = saved.y;
         carriedOver++;
       } else {
-        // d3's own phyllotaxis seeding, recentred on the viewport so the layout
-        // expands outward from the middle rather than from the origin.
-        const angle = i * 2.39996323;
-        const spread = 12 * Math.sqrt(i);
-        node.x = width / 2 + spread * Math.cos(angle);
-        node.y = height / 2 + spread * Math.sin(angle);
+        // Phyllotaxis seeding within the component's assigned grid cell so
+        // disconnected islands start spatially separated.
+        const cid = nodeComp.get(n.id) ?? 0;
+        const { cx, cy } = compCenter.get(cid) ?? { cx: width / 2, cy: height / 2 };
+        const si = compSeedIdx.get(cid) ?? 0;
+        compSeedIdx.set(cid, si + 1);
+        const angle = si * 2.39996323;
+        const spread = 12 * Math.sqrt(si);
+        node.x = cx + spread * Math.cos(angle);
+        node.y = cy + spread * Math.sin(angle);
       }
       const pin = pinsRef.current.get(n.id);
       if (pin) {
@@ -340,6 +398,7 @@ export const ConnectionsCanvas: React.FC<Props> = ({
     }
 
     function drawLabels() {
+      if (!showLabelsRef.current) return;
       const zoomedIn = transform.k > LABEL_MIN_SCALE;
       if (!zoomedIn && labelCandidates[0].r * transform.k < LABEL_MIN_SCREEN_RADIUS) return;
 
@@ -453,6 +512,7 @@ export const ConnectionsCanvas: React.FC<Props> = ({
     }
 
     redrawOverlayRef.current = drawOverlay;
+    redrawBaseRef.current = drawBase;
 
     const simulation: Simulation<PlacedNode, SimLink> = forceSimulation<PlacedNode, SimLink>(nodes)
       .force(
@@ -471,8 +531,18 @@ export const ConnectionsCanvas: React.FC<Props> = ({
         'collide',
         forceCollide<PlacedNode>().radius((d) => d.r + 2)
       )
-      .force('x', forceX<PlacedNode>(width / 2).strength(CENTER_STRENGTH))
-      .force('y', forceY<PlacedNode>(height / 2).strength(CENTER_STRENGTH));
+      .force(
+        'x',
+        forceX<PlacedNode>()
+          .x((d) => compCenter.get(nodeComp.get(d.id) ?? 0)?.cx ?? width / 2)
+          .strength(CENTER_STRENGTH)
+      )
+      .force(
+        'y',
+        forceY<PlacedNode>()
+          .y((d) => compCenter.get(nodeComp.get(d.id) ?? 0)?.cy ?? height / 2)
+          .strength(CENTER_STRENGTH)
+      );
 
     // Zoom: suppress panning when the gesture starts on a node so drag and pan
     // never compete for the same mousedown.
@@ -662,6 +732,7 @@ export const ConnectionsCanvas: React.FC<Props> = ({
       // the layout the operator was looking at.
       captureLayout();
       redrawOverlayRef.current = null;
+      redrawBaseRef.current = null;
       simulation.stop();
       baseCanvas.removeEventListener('mousemove', onMouseMove);
       baseCanvas.removeEventListener('mousedown', onMouseDown);

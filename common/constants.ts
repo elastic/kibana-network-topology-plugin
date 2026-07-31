@@ -67,7 +67,7 @@ export const CONNECTIONS_METRIC_FIELDS = {
 // semantic names) because these are consumed by the canvas renderer.
 export const CONNECTION_ROLE_COLORS: Record<string, string> = {
   source: '#0077CC',
-  target: '#54B399',
+  destination: '#54B399',
   both: '#9170B8',
 };
 

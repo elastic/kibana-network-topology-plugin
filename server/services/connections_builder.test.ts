@@ -50,7 +50,7 @@ describe('shapeConnectionsGraph', () => {
     expect(roles).toEqual({
       '10.0.0.1': 'source', // only ever a source
       '10.0.0.2': 'both', // destination of one link, source of another
-      '10.0.0.3': 'target', // only ever a destination
+      '10.0.0.3': 'destination', // only ever a destination
     });
     expect(graph.took).toBe(7);
     expect(graph.truncated).toBe(false);
@@ -66,7 +66,7 @@ describe('shapeConnectionsGraph', () => {
 
     expect(graph.nodes.find((n) => n.id === 'hub')).toEqual({
       id: 'hub',
-      role: 'target',
+      role: 'destination',
       sessions: 15,
       bytes: 1500,
       packets: 28,

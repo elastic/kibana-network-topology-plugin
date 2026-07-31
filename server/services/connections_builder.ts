@@ -148,7 +148,7 @@ export function shapeConnectionsGraph(
   }
 
   const roleOf = (entry: NodeAccumulator): ConnectionRole =>
-    entry.asSource && entry.asTarget ? 'both' : entry.asSource ? 'source' : 'target';
+    entry.asSource && entry.asTarget ? 'both' : entry.asSource ? 'source' : 'destination';
 
   const nodes: ConnectionsNode[] = [...acc.entries()].map(([id, entry]) => {
     const node: ConnectionsNode = {

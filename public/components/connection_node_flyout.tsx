@@ -16,10 +16,12 @@ import {
   EuiBasicTable,
   EuiButton,
   EuiButtonEmpty,
+  EuiButtonIcon,
   EuiCopy,
   EuiDescriptionList,
   EuiFlexGroup,
   EuiFlexItem,
+  EuiLink,
   EuiSpacer,
   EuiText,
 } from '@elastic/eui';
@@ -38,6 +40,29 @@ interface Props {
   onClose: () => void;
   onToggleHide: (nodeId: string) => void;
   onToggleFocus: (nodeId: string) => void;
+  /** Add a phrase filter to the search bar. negate=true produces an exclusion. */
+  onAddFilter: (field: string, value: string, negate: boolean) => void;
+  /** Returns a full Kibana URL for a given Security app sub-path. */
+  getSecurityUrl: (path: string) => string;
+}
+
+/**
+ * Returns the Security app deep-link URL for a known ECS field, or null when
+ * the field type has no corresponding Security entity page.
+ * 'both'-role nodes use the source view by default.
+ */
+function toSecurityHref(
+  field: string,
+  value: string,
+  getUrl: (path: string) => string
+): string | null {
+  if (field === 'source.ip')
+    return getUrl(`/network/ip/${encodeURIComponent(value)}/source/`);
+  if (field === 'destination.ip')
+    return getUrl(`/network/ip/${encodeURIComponent(value)}/destination/`);
+  if (field === 'host.name') return getUrl(`/hosts/name/${encodeURIComponent(value)}/`);
+  if (field === 'user.name') return getUrl(`/users/name/${encodeURIComponent(value)}/`);
+  return null;
 }
 
 interface PeerRow {
@@ -57,6 +82,8 @@ export const ConnectionNodeFlyout: React.FC<Props> = ({
   onClose,
   onToggleHide,
   onToggleFocus,
+  onAddFilter,
+  getSecurityUrl,
 }) => {
   // Derived from the link list already in memory — no extra request.
   const peers: PeerRow[] = useMemo(
@@ -72,6 +99,10 @@ export const ConnectionNodeFlyout: React.FC<Props> = ({
         .sort((a, b) => b.sessions - a.sessions),
     [graph.links, node.id]
   );
+
+  // 'both' defaults to the source view (Security's "View as" dropdown handles the rest).
+  const activeField = node.role === 'destination' ? dstField : srcField;
+  const secHref = toSecurityHref(activeField, node.id, getSecurityUrl);
 
   const seenAs =
     node.role === 'both'
@@ -104,7 +135,15 @@ export const ConnectionNodeFlyout: React.FC<Props> = ({
           </EuiFlexItem>
           <EuiFlexItem>
             <EuiTitle size="m">
-              <h2 style={{ fontFamily: 'monospace' }}>{node.id}</h2>
+              <h2 style={{ fontFamily: 'monospace' }}>
+                {secHref ? (
+                  <EuiLink href={secHref} target="_blank">
+                    {node.id}
+                  </EuiLink>
+                ) : (
+                  node.id
+                )}
+              </h2>
             </EuiTitle>
           </EuiFlexItem>
         </EuiFlexGroup>
@@ -139,6 +178,36 @@ export const ConnectionNodeFlyout: React.FC<Props> = ({
                 <EuiText size="s" style={{ fontFamily: 'monospace' }}>
                   {peer}
                 </EuiText>
+              ),
+            },
+            {
+              name: '',
+              width: '56px',
+              render: (row: PeerRow) => (
+                <EuiFlexGroup gutterSize="xs" responsive={false}>
+                  <EuiFlexItem grow={false}>
+                    <EuiButtonIcon
+                      iconType="plusInCircle"
+                      color="primary"
+                      size="xs"
+                      aria-label={`Include ${row.peer}`}
+                      onClick={() =>
+                        onAddFilter(row.outbound ? dstField : srcField, row.peer, false)
+                      }
+                    />
+                  </EuiFlexItem>
+                  <EuiFlexItem grow={false}>
+                    <EuiButtonIcon
+                      iconType="minusInCircle"
+                      color="danger"
+                      size="xs"
+                      aria-label={`Exclude ${row.peer}`}
+                      onClick={() =>
+                        onAddFilter(row.outbound ? dstField : srcField, row.peer, true)
+                      }
+                    />
+                  </EuiFlexItem>
+                </EuiFlexGroup>
               ),
             },
             {

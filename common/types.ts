@@ -76,7 +76,7 @@ export interface TopologyGraph {
  * Which side of the configured field pair a connections node was seen on.
  * A node that appears as both a source and a destination is 'both'.
  */
-export type ConnectionRole = 'source' | 'target' | 'both';
+export type ConnectionRole = 'source' | 'destination' | 'both';
 
 export interface ConnectionsNode {
   /** Field value, e.g. "10.1.2.3" */

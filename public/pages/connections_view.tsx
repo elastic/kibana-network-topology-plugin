@@ -74,6 +74,10 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
   const api = useApi();
   const { services } = useKibana<KibanaServices>();
   const SearchBar = services.unifiedSearch.ui.SearchBar;
+  const getSecurityUrl = useCallback(
+    (path: string) => services.application.getUrlForApp('security', { path }),
+    [services.application]
+  );
   const { selectedDataView, savedDataViews, onChangeDataView } = useDataViewSelector();
 
   const [srcField, setSrcField] = useState<string>(CONNECTIONS_DEFAULTS.srcField);
@@ -98,6 +102,7 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
   const [hiddenNodes, setHiddenNodes] = useState<Set<string>>(new Set());
   // null = follow auto (off on large graphs, on otherwise). true/false = explicit user choice.
   const [animationsUserPref, setAnimationsUserPref] = useState<boolean | null>(null);
+  const [showLabels, setShowLabels] = useState(true);
   const [releasePinsKey, setReleasePinsKey] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -202,6 +207,23 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
     if (!preset) return;
     setSrcField(preset.src);
     setDstField(preset.dst);
+  }, []);
+
+  const handleAddFilter = useCallback((field: string, value: string, negate: boolean) => {
+    setFilters((prev) => [
+      ...prev,
+      {
+        meta: {
+          type: 'phrase',
+          key: field,
+          negate,
+          disabled: false,
+          alias: null,
+          params: { query: value },
+        },
+        query: { match_phrase: { [field]: value } },
+      } as Filter,
+    ]);
   }, []);
 
   const handleNodeClick = useCallback((id: string) => setSelectedNodeId(id), []);
@@ -534,7 +556,7 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
             <EuiFlexItem />
             <EuiFlexItem grow={false}>
               <EuiFlexGroup gutterSize="xs" alignItems="center" responsive={false}>
-                {(['source', 'both', 'target'] as const).map((role) => (
+                {(['source', 'both', 'destination'] as const).map((role) => (
                   <EuiFlexItem grow={false} key={role}>
                     <EuiBadge color={CONNECTION_ROLE_COLORS[role]}>{role}</EuiBadge>
                   </EuiFlexItem>
@@ -549,6 +571,14 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
               >
                 Release pins
               </EuiButtonEmpty>
+            </EuiFlexItem>
+            <EuiFlexItem grow={false}>
+              <EuiSwitch
+                compressed
+                label="Show labels"
+                checked={showLabels}
+                onChange={(e) => setShowLabels(e.target.checked)}
+              />
             </EuiFlexItem>
             <EuiFlexItem grow={false}>
               <EuiFlexGroup gutterSize="xs" alignItems="center" responsive={false}>
@@ -588,6 +618,7 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
                   selectedNodeId={selectedNodeId}
                   releasePinsKey={releasePinsKey}
                   animationsDisabled={animationsDisabled}
+                  showLabels={showLabels}
                 />
               )}
             </EuiPanel>
@@ -606,6 +637,8 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
           onClose={() => setSelectedNodeId(null)}
           onToggleHide={toggleHide}
           onToggleFocus={toggleFocus}
+          onAddFilter={handleAddFilter}
+          getSecurityUrl={getSecurityUrl}
         />
       )}
     </div>
