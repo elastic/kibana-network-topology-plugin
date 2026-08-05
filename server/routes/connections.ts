@@ -57,11 +57,12 @@ export function registerConnectionsRoutes(router: IRouter, logger: Logger) {
           minSessions: schema.number({ defaultValue: CONNECTIONS_DEFAULTS.minSessions, min: 1 }),
           groupField: schema.maybe(schema.string({ maxLength: 256 })),
           maxGroups: schema.number({ defaultValue: CONNECTIONS_DEFAULTS.maxGroups, min: 1 }),
+          debug: schema.boolean({ defaultValue: false }),
         }),
       },
     },
     async (context, request, response) => {
-      const { index, srcField, dstField, from, to, kql, filters, groupField, maxGroups } =
+      const { index, srcField, dstField, from, to, kql, filters, groupField, maxGroups, debug } =
         request.query;
       try {
         const esClient = (await context.core).elasticsearch.client.asCurrentUser;
@@ -81,6 +82,7 @@ export function registerConnectionsRoutes(router: IRouter, logger: Logger) {
           minSessions: Math.max(1, Math.floor(request.query.minSessions)),
           groupField: groupField || undefined,
           maxGroups: Math.max(1, Math.floor(maxGroups)),
+          debug,
           logger,
         });
 

@@ -33,6 +33,8 @@ export interface BuildConnectionsOptions {
   groupField?: string;
   /** Top-K group values. No server-side cap; ES surfaces the error on oversized requests. */
   maxGroups?: number;
+  /** When true, includes the raw ES aggregation response in `_debug.response`. */
+  debug?: boolean;
   logger: Logger;
 }
 
@@ -272,6 +274,7 @@ export async function buildConnectionsGraph(
     minSessions,
     groupField,
     maxGroups = 10,
+    debug = false,
     logger,
   } = options;
 
@@ -294,61 +297,66 @@ export async function buildConnectionsGraph(
     );
   }
 
-  // Nested `terms` (top-N sources → top-M destinations per source) rather than
-  // `multi_terms`: both levels can use global ordinals, and "top talkers" is the
-  // correct semantic for this view. `multi_terms` materializes a composite key
-  // for every src×dst combination and does not survive realistic flow volumes.
-  const result = await esClient.search({
-    index,
-    size: 0,
-    track_total_hits: false,
-    // An index pattern that resolves to nothing is an empty graph, not an error —
-    // the field pair and the index are both free-form here.
-    ignore_unavailable: true,
-    allow_no_indices: true,
-    query: { bool: { filter: esFilters } },
-    aggs: groupField
-      ? // Three-level agg: group → src → dst. `prefixGroupedSources` flattens it
-        // into the two-level shape `shapeConnectionsGraph` expects.
-        {
-          grp: {
-            terms: { field: groupField, size: maxGroups, order: { _count: 'desc' } },
-            aggs: {
-              src: {
-                terms: { field: srcField, size: maxSources, order: { _count: 'desc' } },
-                aggs: {
-                  dst: {
-                    terms: { field: dstField, size: maxDstPerSource, order: { _count: 'desc' } },
-                    aggs: {
-                      bytes: { sum: { field: CONNECTIONS_METRIC_FIELDS.bytes } },
-                      packets: { sum: { field: CONNECTIONS_METRIC_FIELDS.packets } },
-                    },
+  // Build the search body as a named object so it can be captured for the debug
+  // Request tab without having to re-derive it from scattered variables.
+  const aggs = groupField
+    ? // Three-level agg: group → src → dst. `prefixGroupedSources` flattens it
+      // into the two-level shape `shapeConnectionsGraph` expects.
+      {
+        grp: {
+          terms: { field: groupField, size: maxGroups, order: { _count: 'desc' } },
+          aggs: {
+            src: {
+              terms: { field: srcField, size: maxSources, order: { _count: 'desc' } },
+              aggs: {
+                dst: {
+                  terms: { field: dstField, size: maxDstPerSource, order: { _count: 'desc' } },
+                  aggs: {
+                    bytes: { sum: { field: CONNECTIONS_METRIC_FIELDS.bytes } },
+                    packets: { sum: { field: CONNECTIONS_METRIC_FIELDS.packets } },
                   },
                 },
               },
             },
           },
-        }
-      : // Deliberately no `min_doc_count` here even though minSessions would map
-        // onto it: terms dropped by min_doc_count also count towards
-        // `sum_other_doc_count`, which would make the "showing a top-N sample"
-        // signal fire for every request with minSessions > 1. The threshold is
-        // applied to the flattened links instead.
-        {
-          src: {
-            terms: { field: srcField, size: maxSources, order: { _count: 'desc' } },
-            aggs: {
-              dst: {
-                terms: { field: dstField, size: maxDstPerSource, order: { _count: 'desc' } },
-                aggs: {
-                  bytes: { sum: { field: CONNECTIONS_METRIC_FIELDS.bytes } },
-                  packets: { sum: { field: CONNECTIONS_METRIC_FIELDS.packets } },
-                },
+        },
+      }
+    : // Deliberately no `min_doc_count` here even though minSessions would map
+      // onto it: terms dropped by min_doc_count also count towards
+      // `sum_other_doc_count`, which would make the "showing a top-N sample"
+      // signal fire for every request with minSessions > 1. The threshold is
+      // applied to the flattened links instead.
+      {
+        src: {
+          terms: { field: srcField, size: maxSources, order: { _count: 'desc' } },
+          aggs: {
+            dst: {
+              terms: { field: dstField, size: maxDstPerSource, order: { _count: 'desc' } },
+              aggs: {
+                bytes: { sum: { field: CONNECTIONS_METRIC_FIELDS.bytes } },
+                packets: { sum: { field: CONNECTIONS_METRIC_FIELDS.packets } },
               },
             },
           },
         },
-  });
+      };
+
+  // Nested `terms` (top-N sources → top-M destinations per source) rather than
+  // `multi_terms`: both levels can use global ordinals, and "top talkers" is the
+  // correct semantic for this view. `multi_terms` materializes a composite key
+  // for every src×dst combination and does not survive realistic flow volumes.
+  const searchBody = {
+    size: 0 as const,
+    track_total_hits: false as const,
+    // An index pattern that resolves to nothing is an empty graph, not an error —
+    // the field pair and the index are both free-form here.
+    ignore_unavailable: true as const,
+    allow_no_indices: true as const,
+    query: { bool: { filter: esFilters } },
+    aggs,
+  };
+
+  const result = await esClient.search({ index, ...searchBody });
 
   const flatSrc = groupField
     ? prefixGroupedSources(result.aggregations?.grp as TermsAggResult<GroupBucket>)
@@ -358,6 +366,11 @@ export async function buildConnectionsGraph(
     minSessions,
     took: result.took ?? 0,
   });
+
+  graph._debug = {
+    request: { index, ...searchBody },
+    ...(debug ? { response: result.aggregations } : {}),
+  };
 
   logger.debug(
     `Connections graph built: ${graph.nodes.length} nodes, ${graph.links.length} links ` +

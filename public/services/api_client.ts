@@ -38,6 +38,7 @@ export class ApiClient {
     cidr?: string;
     from?: string;
     to?: string;
+    debug?: boolean;
   }): Promise<TopologyResponse> {
     return this.http.get(API_ROUTES.TOPOLOGY, {
       query: { from: 'now-30m', to: 'now', ...params },

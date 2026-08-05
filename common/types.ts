@@ -70,6 +70,12 @@ export interface TopologyGraph {
   links: TopologyLink[];
   discoveredAt: string;
   method: string;
+  _debug?: {
+    /** The ES query params and per-step search bodies that produced this graph. */
+    request: object;
+    /** Raw aggregation responses for each step. Only populated when `debug=true`. */
+    response?: object;
+  };
 }
 
 /**
@@ -110,6 +116,17 @@ export interface ConnectionsGraph {
   truncated: boolean;
   /** Elasticsearch `took`, in ms */
   took: number;
+  /**
+   * Always populated by the server. Contains the exact ES search body that
+   * produced this result, and — when `debug=true` is passed to the API —
+   * the raw aggregation buckets as well. Optional in the type for unit-test
+   * compatibility (`shapeConnectionsGraph` does not set it).
+   */
+  _debug?: {
+    request: object;
+    /** Only populated when `debug=true` is included in the API request. */
+    response?: object;
+  };
 }
 
 export interface ConnectionsRequest {
@@ -134,6 +151,8 @@ export interface ConnectionsRequest {
   groupField?: string;
   /** Top-K groups retained in the three-level aggregation. No hard cap — oversized requests surface the ES error. */
   maxGroups?: number;
+  /** When true, includes the raw ES aggregation response in `_debug.response`. */
+  debug?: boolean;
 }
 
 export interface SiteHealth {

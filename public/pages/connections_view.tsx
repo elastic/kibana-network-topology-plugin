@@ -24,6 +24,9 @@ import {
   EuiSwitch,
   EuiText,
 } from '@elastic/eui';
+import type { InspectTab } from '../components/inspect_flyout';
+import { InspectFlyout } from '../components/inspect_flyout';
+import { serializeConnectionsGraph } from '../utils/serialize_graph';
 import type { Filter, Query } from '@kbn/es-query';
 import type { DataPublicPluginStart } from '@kbn/data-plugin/public';
 import type { UnifiedSearchPublicPluginStart } from '@kbn/unified-search-plugin/public';
@@ -108,6 +111,9 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
   const [showLabels, setShowLabels] = useState(true);
   const [releasePinsKey, setReleasePinsKey] = useState(0);
 
+  const [showInspect, setShowInspect] = useState(false);
+  const [debugResponse, setDebugResponse] = useState<object | null>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(0);
 
@@ -188,12 +194,13 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
   ]);
 
   // Any new field pair or group change is a different graph — stale focus/hide/selection
-  // would silently filter the new result.
+  // and stale debug data would be confusing.
   useEffect(() => {
     setSelectedNodeId(null);
     setFocusNodeId(null);
     setHiddenNodes(new Set());
-  }, [srcField, dstField, groupField, indexPattern]);
+    setDebugResponse(null);
+  }, [srcField, dstField, groupField, indexPattern, from, to, kql, filtersJson]);
 
   const fieldOptions = useMemo(() => {
     const fields = selectedDataView?.fields ?? [];
@@ -232,6 +239,44 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
       } as Filter,
     ]);
   }, []);
+
+  const handleInspect = useCallback(() => {
+    setShowInspect(true);
+    if (debugResponse !== null) return; // already loaded
+    api
+      .fetchConnections({
+        index: indexPattern,
+        srcField,
+        dstField,
+        from,
+        to,
+        kql: kql || undefined,
+        filters: filtersJson,
+        maxSources: Math.min(Math.max(1, maxSources), CONNECTIONS_LIMITS.maxSources),
+        maxDstPerSource: Math.min(Math.max(1, maxDstPerSource), CONNECTIONS_LIMITS.maxDstPerSource),
+        minSessions: Math.max(1, minSessions),
+        groupField: groupField || undefined,
+        maxGroups: Math.max(1, maxGroups),
+        debug: true,
+      })
+      .then((g) => setDebugResponse(g._debug?.response ?? null))
+      .catch(() => setDebugResponse({})); // show empty object on error rather than indefinite spinner
+  }, [
+    debugResponse,
+    api,
+    indexPattern,
+    srcField,
+    dstField,
+    from,
+    to,
+    kql,
+    filtersJson,
+    maxSources,
+    maxDstPerSource,
+    minSessions,
+    groupField,
+    maxGroups,
+  ]);
 
   const handleNodeClick = useCallback((id: string) => setSelectedNodeId(id), []);
   const handleBackgroundReset = useCallback(() => {
@@ -695,6 +740,11 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
                 )}
               </EuiFlexGroup>
             </EuiFlexItem>
+            <EuiFlexItem grow={false}>
+              <EuiButtonEmpty size="s" iconType="inspect" onClick={handleInspect}>
+                Inspect
+              </EuiButtonEmpty>
+            </EuiFlexItem>
           </EuiFlexGroup>
 
           <EuiSpacer size="m" />
@@ -716,6 +766,7 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
               )}
             </EuiPanel>
           </div>
+
         </>
       )}
 
@@ -732,6 +783,40 @@ export const ConnectionsView: React.FC<Props> = ({ from, to, refreshKey }) => {
           onToggleFocus={toggleFocus}
           onAddFilter={handleAddFilter}
           getSecurityUrl={getSecurityUrl}
+        />
+      )}
+
+      {showInspect && displayed && (
+        <InspectFlyout
+          title={`${srcField} → ${dstField}${groupField ? ` (grouped by ${groupField})` : ''}`}
+          onClose={() => setShowInspect(false)}
+          tabs={
+            [
+              {
+                id: 'request',
+                name: 'Request',
+                content: graph?._debug?.request ?? null,
+              },
+              {
+                id: 'response',
+                name: 'Response',
+                content: debugResponse,
+              },
+              {
+                id: 'graph',
+                name: 'Graph',
+                content: serializeConnectionsGraph(displayed.graph, {
+                  srcField,
+                  dstField,
+                  groupField: groupField || undefined,
+                  index: indexPattern,
+                  from,
+                  to,
+                  kql: kql || undefined,
+                }),
+              },
+            ] as InspectTab[]
+          }
         />
       )}
     </div>
