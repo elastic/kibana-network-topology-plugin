@@ -29,7 +29,7 @@ Kibana / Elasticsearch **8.19.12+** and **9.0.0+**
 ### Installation Instructions
 
 > [!NOTE]
-> The plugin depends on Kibana and Elasticsearch. Consult these [docs](https://www.elastic.co/docs/deploy-manage/deploy/self-managed) if you don't already have them setup. 
+> The plugin depends on Kibana and Elasticsearch. If you do not already have a running stack, see the [self-managed deployment docs](https://www.elastic.co/docs/deploy-manage/deploy/self-managed). For day-to-day plugin development, prefer the [Development Quick Start](#development-quick-start) below (Kibana’s `yarn es` / `yarn start` workflow).
 
 #### Pre-built bundle
 
@@ -48,7 +48,7 @@ Kibana / Elasticsearch **8.19.12+** and **9.0.0+**
 git clone https://github.com/elastic/kibana.git
 cd kibana
 
-# For a specific Kibana version, checkout a supported release tag, otherwise checkout main:
+# For a specific Kibana version, check out a supported release tag; otherwise use main:
 git checkout v8.19.12 # or: git checkout main
 ```
 
@@ -88,60 +88,70 @@ bin/kibana-plugin install file:///absolute/path/to/networkTopology-X.Y.Z.zip
 
 ### Prerequisites
 
-- Node.js — use the version from the Kibana checkout’s `.nvmrc` / `.node-version` (supported Kibana versions: **8.19.12+** and **9.0.0+**)
-- If you have [`nvm`](https://www.elastic.co/docs/extend/kibana/getting-started/set-up-a-development-environment#install-dependencies), it can take care of the correct versions/dependencies.
-  - From `<kibana-repo-root>`, run `nvm install && npm install -g yarn`
+- Node.js — match the version in the Kibana checkout’s `.nvmrc` / `.node-version` (supported Kibana versions: **8.19.12+** and **9.0.0+**)
+- Optional: [`nvm`](https://github.com/nvm-sh/nvm) — after cloning Kibana, from `<kibana-repo-root>` run `nvm install && nvm use`, then install Yarn classic if needed (`npm install -g yarn`)
 
-This plugin lives **outside** the Kibana repository (separate repo + separate releases). Kibana’s dev tooling still expects the plugin under `<kibana-repo-root>/plugins/` so that relative scripts such as `../../scripts/plugin_helpers` resolve correctly.
+See also Elastic’s [Kibana development environment](https://www.elastic.co/docs/extend/kibana/getting-started/set-up-a-development-environment) guide.
 
-### 1. Clone Kibana and checkout desired version/branch
+This plugin lives **outside** the Kibana repository (separate repo + separate releases). Kibana’s dev tooling still expects it under `<kibana-repo-root>/plugins/` so relative scripts such as `../../scripts/plugin_helpers` resolve correctly.
+
+### 1. Clone Kibana and check out the desired version/branch
 
 ```bash
 git clone https://github.com/elastic/kibana.git
 cd kibana
 
-# For a specific Kibana version, checkout a supported release tag, or checkout main for latest:
+# For a specific Kibana version, check out a supported release tag; otherwise use main:
 git checkout v8.19.12 # or: git checkout main
 ```
 
-You can consult [Kibana Dev Setup](https://www.elastic.co/docs/extend/kibana/getting-started/set-up-a-development-environment) docs for more information and options.
-
-### 2. Add this plugin as a worktree under `<kibana-repo-root>/plugins/`
+### 2. Add this plugin as a git worktree under `<kibana-repo-root>/plugins/`
 
 > [!NOTE]
-> **git worktree** is preferred to clone a copy of the plugin as a separate branch within `<kibana-repo-root>/plugins/`. A symlink is not guaranteed to work).
+> Use a **git worktree** (not a symlink). A symlink under `plugins/networkTopology` is not reliable: Node resolves `../../scripts/plugin_helpers` from the realpath of the linked directory, so `yarn` looks outside the Kibana tree and fails.
 
-From plugin's repo root (`<plugin-repo-root>`), branch a new worktree into `<kibana-repo-root>/plugins/`
+If you do not already have a clone of this plugin:
 
 ```bash
+git clone https://github.com/elastic/kibana-network-topology-plugin.git
+cd kibana-network-topology-plugin
+```
+
+From the plugin repo root (`<plugin-repo-root>`), add a worktree into Kibana’s `plugins/` directory:
+
+```bash
+# Creates branch `dev-local` from `main` and checks it out at the target path
 git worktree add "<kibana-repo-root>/plugins/networkTopology" -b dev-local main
 ```
 
-This creates the directory `<kibana-repo-root>/plugins/networkTopology`, which shares the same git tracking and history as the plugin's cloned repo.
-That means commits from within this directory will belong to plugin repo's branch `dev-local`, which can be pushed/merged as normal.
+That directory shares the same Git object database as `<plugin-repo-root>`. Commits made there land on branch `dev-local` and can be pushed/merged like any other branch.
 
-Note that the command format is  `git worktree add "<target-directory>" -b <new-branch-name> <base-branch>` so the branch or base branch can be changed as desired.
-`git worktree remove "<target-directory>"` will remove the directory/worktree.
+Tips:
+
+- Command shape: `git worktree add "<target-directory>" -b <new-branch> <base-commit-ish>`
+- If `dev-local` already exists: `git worktree add "<kibana-repo-root>/plugins/networkTopology" dev-local`
+- To remove later: `git worktree remove "<kibana-repo-root>/plugins/networkTopology"`
+- Prefer working inside the worktree path for `yarn` commands so `pwd -P` resolves under Kibana (not the standalone clone)
 
 ### 3. Bootstrap Kibana (once, after the worktree exists)
 
 ```bash
-cd /absolute/path/to/kibana
-nvm use
+cd "<kibana-repo-root>"
+nvm use   # if you use nvm
 yarn kbn bootstrap
 ```
 
 ### 4. Start Elasticsearch
 
 ```bash
-# From the Kibana repo root
+# From <kibana-repo-root>
 yarn es snapshot --license trial
 ```
 
 ### 5. Set up Elasticsearch resources + load sample data
 
 ```bash
-# From Kibana root, cd into `plugins/networkTopology` (pwd should point to </absolute/path/to/kibana>/plugins/networkTopology)
+cd "<kibana-repo-root>/plugins/networkTopology"
 chmod +x scripts/setup_elasticsearch.sh
 ./scripts/setup_elasticsearch.sh
 
@@ -151,21 +161,21 @@ node scripts/generate_sample_data.mjs
 > Note: `scripts/setup_elasticsearch.sh` and the data generators default to:
 >
 > - Elasticsearch URL: `http://localhost:9200`
-> - credentials: `elastic / changeme`
+> - credentials: `elastic` / `changeme`
 
 ### 6. Start Kibana + build the plugin UI bundle (two terminals)
 
-(From Kibana root) start Kibana in one terminal:
+Terminal A — Kibana:
 
 ```bash
-# From the Kibana repo root
+cd "<kibana-repo-root>"
 yarn start --no-base-path
 ```
 
-In a second terminal, from Kibana root, cd into plugins/networkTopology (pwd should point to </absolute/path/to/kibana>/plugins/networkTopology). 
-And build the plugin UI bundle in watch mode (required so Kibana can serve `networkTopology.plugin.js`):
+Terminal B — plugin UI bundle in watch mode (required so Kibana can serve `networkTopology.plugin.js`):
 
 ```bash
+cd "<kibana-repo-root>/plugins/networkTopology"
 yarn dev --watch
 ```
 
@@ -188,7 +198,7 @@ This indicates Kibana registered the plugin, but the UI bundle is not available.
 Most commonly, `yarn dev --watch` is not running (or crashed). Ensure you have a second terminal running:
 
 ```bash
-cd /absolute/path/to/kibana/plugins/networkTopology
+cd "<kibana-repo-root>/plugins/networkTopology"
 yarn dev --watch
 ```
 
