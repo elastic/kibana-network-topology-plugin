@@ -2,6 +2,7 @@
   "id": "networkTopology",
   "version": "kibana",
   "server": true,
+  "configPath": "networkTopology",
   "owner": {
     "name": "Elastic"
   },

@@ -18,6 +18,7 @@
     { "path": "../../src/plugins/kibana_react/tsconfig.json" },
     { "path": "../../src/platform/plugins/shared/unified_search/tsconfig.json" },
     { "path": "../../src/platform/plugins/shared/data_views/tsconfig.json" },
-    { "path": "../../src/platform/packages/shared/kbn-es-query/tsconfig.json" }
+    { "path": "../../src/platform/packages/shared/kbn-es-query/tsconfig.json" },
+    { "path": "../../src/platform/packages/shared/kbn-config-schema/tsconfig.json" }
   ]
 }

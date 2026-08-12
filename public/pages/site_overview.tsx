@@ -72,7 +72,7 @@ export const SiteOverview: React.FC<Props> = ({ onSiteClick, from, to, refreshKe
     );
   if (error)
     return (
-      <EuiCallOut title="Error loading sites" color="danger">
+      <EuiCallOut title="Error loading sites" color="danger" announceOnMount>
         <p>{error}</p>
       </EuiCallOut>
     );
@@ -115,6 +115,7 @@ export const SiteOverview: React.FC<Props> = ({ onSiteClick, from, to, refreshKe
                     type="globe"
                     size="l"
                     color={STATUS_EUI_COLORS[site.worstStatus] || 'subdued'}
+                    aria-hidden={true}
                   />
                 </EuiFlexItem>
                 <EuiFlexItem>

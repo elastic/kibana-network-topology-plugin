@@ -6,9 +6,10 @@
  */
 
 import type { PluginInitializerContext } from '@kbn/core/public';
+import type { NetworkTopologyConfig } from '../server/config';
 import { NetworkTopologyPlugin } from './plugin';
 
-export function plugin(initializerContext: PluginInitializerContext) {
+export function plugin(initializerContext: PluginInitializerContext<NetworkTopologyConfig>) {
   return new NetworkTopologyPlugin(initializerContext);
 }
 
