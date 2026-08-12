@@ -5,11 +5,12 @@
  * 2.0.
  */
 
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { css, keyframes } from '@emotion/react';
-import { BaseEdge, getBezierPath, type EdgeProps, type Edge } from '@xyflow/react';
+import { BaseEdge, getBezierPath, useInternalNode, type EdgeProps, type Edge } from '@xyflow/react';
 import { useEuiTheme } from '@elastic/eui';
 import type { TopologyEdgeData } from '../utils/graph_to_react_flow';
+import { getEdgeAnchors } from '../utils/edge_geometry';
 
 type TopologyEdge = Edge<TopologyEdgeData, 'topology'>;
 
@@ -62,30 +63,37 @@ const resolveOpacity = (status: Status, method: Method): number => {
 };
 
 export const TopologyReactFlowEdge = memo(
-  ({
-    id,
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-    data,
-  }: EdgeProps<TopologyEdge>) => {
+  ({ id, source, target, data }: EdgeProps<TopologyEdge>) => {
     const { euiTheme } = useEuiTheme();
+
+    // Subscribing to the two endpoint nodes re-renders this edge whenever either
+    // one moves, which is what lets the anchors below track a drag in progress.
+    // The `sourceX`/`sourceY` props React Flow passes in are deliberately unused:
+    // they resolve to the handle assigned at layout time, which goes stale as soon
+    // as the operator drags a node to a different side of its neighbour.
+    const sourceNode = useInternalNode(source);
+    const targetNode = useInternalNode(target);
 
     // data is always populated by graphToReactFlow; defaults guard against incomplete shapes.
     const status: Status = data?.status ?? 'up';
     const method: Method = data?.method ?? 'lldp';
 
-    const [edgePath] = getBezierPath({
-      sourceX,
-      sourceY,
-      sourcePosition,
-      targetX,
-      targetY,
-      targetPosition,
-    });
+    const edgePath = useMemo(() => {
+      if (!sourceNode || !targetNode) return null;
+      const anchors = getEdgeAnchors(sourceNode, targetNode);
+      const [path] = getBezierPath({
+        sourceX: anchors.source.x,
+        sourceY: anchors.source.y,
+        sourcePosition: anchors.source.position,
+        targetX: anchors.target.x,
+        targetY: anchors.target.y,
+        targetPosition: anchors.target.position,
+      });
+      return path;
+    }, [sourceNode, targetNode]);
+
+    // Either endpoint can be briefly absent while React Flow reconciles a graph refresh.
+    if (!edgePath) return null;
 
     const isUnhealthy = status !== 'up';
     const groupStyles = isUnhealthy

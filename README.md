@@ -11,7 +11,7 @@ A Kibana Observability plugin for **network monitoring and topology mapping**. C
 ## Features
 
 - **Site overview** — Health card grid showing aggregated device and interface status per site
-- **Interactive topology graph** — Canvas-based, D3 force-directed layout with zoom, pan, drag, and node type visibility toggles
+- **Interactive topology graph** — React Flow graph with a tiered layout, zoom, pan, draggable devices, keyboard navigation, and node type visibility toggles
 - **Device detail flyout** — Interface table, ARP neighbors, BGP peer sessions, OSPF adjacencies
 - **Device inventory list** — Searchable, paginated table of all devices with KQL filtering
 - **Multi-layer topology discovery** — L2 (MAC table), L3 (ARP), BGP overlay, and OSPF adjacency links
@@ -218,8 +218,8 @@ Field mappings are documented in [`docs/field-reference.md`](docs/field-referenc
 │  Observability nav · EUI · Data plugin               │
 ├──────────────────────────────────────────────────────┤
 │ Client (public/)                                     │
-│  Site Overview → Topology Canvas → Device Flyout     │
-│  D3 force layout · Canvas 2D · Quadtree hit detect   │
+│  Site Overview → Topology Map → Device Flyout        │
+│  React Flow (@xyflow/react) · tiered layout · DOM    │
 │  Visibility toggles · BGP/OSPF/ARP link rendering    │
 ├──────────────────────────────────────────────────────┤
 │ Server (server/)                                     │

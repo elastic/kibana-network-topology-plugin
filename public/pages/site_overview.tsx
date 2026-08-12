@@ -72,7 +72,7 @@ export const SiteOverview: React.FC<Props> = ({ onSiteClick, from, to, refreshKe
     );
   if (error)
     return (
-      <EuiCallOut title="Error loading sites" color="danger" announceOnMount>
+      <EuiCallOut title="Error loading sites" color="danger" role="alert">
         <p>{error}</p>
       </EuiCallOut>
     );

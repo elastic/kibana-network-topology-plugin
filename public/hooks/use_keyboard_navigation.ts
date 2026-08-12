@@ -5,18 +5,20 @@
  * 2.0.
  */
 
-import { useEffect, useCallback, useState, type RefObject } from 'react';
-import { useReactFlow, type Node } from '@xyflow/react';
-import type { TopologyNodeData } from '../utils/graph_to_react_flow';
+import { useEffect, useCallback, useMemo, useState, type RefObject } from 'react';
+import { useReactFlow, type Edge, type Node } from '@xyflow/react';
+import type { TopologyEdgeData, TopologyNodeData } from '../utils/graph_to_react_flow';
+import {
+  buildAdjacency,
+  findNodeInDirection as findNodeInDirectionOf,
+  type ArrowDirection,
+} from '../utils/graph_navigation';
 
-type ArrowDirection = 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight';
-
-// Minimum distance (in the dominant axis) a node must be from the focused node
-// to be considered a candidate for arrow-key navigation.
-const DIRECTION_THRESHOLD = 50;
+const ARROW_KEYS: ArrowDirection[] = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
 
 interface UseKeyboardNavigationOptions {
   nodes: Array<Node<TopologyNodeData>>;
+  edges: Array<Edge<TopologyEdgeData>>;
   selectedDeviceId: string | null;
   onNodeSelect: (node: Node<TopologyNodeData>) => void;
   onClose: () => void;
@@ -35,12 +37,14 @@ interface UseKeyboardNavigationResult {
  * Hook that provides keyboard navigation for the topology canvas.
  *
  * Supports:
- * - Arrow keys: Spatial navigation between nodes
+ * - Arrow keys: Move focus to the nearest *connected* device in that direction,
+ *   falling back to the nearest device when none is linked (see graph_navigation).
  * - Enter/Space: Delegates the focused node to `onNodeSelect`, or closes the
  *   flyout if that node is already selected. Whether a node is actually
  *   selectable (e.g. unmanaged/discovered nodes) is the caller's decision —
  *   this hook only identifies which node the user acted on.
  * - Escape: Close the device flyout
+ * - "+" / "-": Zoom in and out. "0": Reset the viewport to fit the whole graph.
  *
  * Also manages screen reader announcements for arrow-key focus moves, and
  * auto-pans the viewport when keyboard focus lands on an off-screen node —
@@ -50,49 +54,32 @@ interface UseKeyboardNavigationResult {
  */
 export const useKeyboardNavigation = ({
   nodes,
+  edges,
   selectedDeviceId,
   onNodeSelect,
   onClose,
   containerRef,
 }: UseKeyboardNavigationOptions): UseKeyboardNavigationResult => {
   const [screenReaderAnnouncement, setScreenReaderAnnouncement] = useState<string>('');
-  const { getViewport, getNodesBounds, setCenter } = useReactFlow();
+  const { getViewport, getNodesBounds, setCenter, zoomIn, zoomOut, fitView } = useReactFlow();
 
-  /**
-   * Find the closest node in a given direction from the current node.
-   * Uses spatial positioning and distance calculation.
-   */
+  const adjacency = useMemo(() => buildAdjacency(edges), [edges]);
+
   const findNodeInDirection = useCallback(
-    (currentNodeId: string, direction: ArrowDirection): Node<TopologyNodeData> | null => {
-      const currentNode = nodes?.find((n) => n.id === currentNodeId);
-      if (!currentNode) return null;
+    (currentNodeId: string, direction: ArrowDirection): Node<TopologyNodeData> | null =>
+      findNodeInDirectionOf(nodes, adjacency, currentNodeId, direction),
+    [nodes, adjacency]
+  );
 
-      const current = currentNode.position;
-      const candidates: Array<{ node: Node<TopologyNodeData>; distance: number }> = [];
-
-      nodes.forEach((node) => {
-        if (node.id === currentNodeId) return;
-
-        const pos = node.position;
-        const dx = pos.x - current.x;
-        const dy = pos.y - current.y;
-
-        const isInDirection =
-          (direction === 'ArrowRight' && dx > DIRECTION_THRESHOLD && Math.abs(dy) < Math.abs(dx)) ||
-          (direction === 'ArrowLeft' && dx < -DIRECTION_THRESHOLD && Math.abs(dy) < Math.abs(dx)) ||
-          (direction === 'ArrowDown' && dy > DIRECTION_THRESHOLD && Math.abs(dx) < Math.abs(dy)) ||
-          (direction === 'ArrowUp' && dy < -DIRECTION_THRESHOLD && Math.abs(dx) < Math.abs(dy));
-
-        if (isInDirection) {
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          candidates.push({ node, distance });
-        }
-      });
-
-      candidates.sort((a, b) => a.distance - b.distance);
-      return candidates[0]?.node || null;
-    },
-    [nodes]
+  // The keydown listener is on `document`, so the viewport shortcuts must only fire
+  // while the map genuinely holds focus. Without this they would hijack "-" and "0"
+  // from the date picker, the KQL bar and the device flyout.
+  const isFocusWithinMap = useCallback(
+    () =>
+      !!containerRef.current &&
+      containerRef.current.contains(document.activeElement) &&
+      document.activeElement !== document.body,
+    [containerRef]
   );
 
   /**
@@ -131,6 +118,36 @@ export const useKeyboardNavigation = ({
       }
     },
     [containerRef, getViewport, getNodesBounds, setCenter]
+  );
+
+  /**
+   * Runs a viewport change without losing the keyboard user's place in the graph.
+   *
+   * The map renders with `onlyRenderVisibleElements`, so React Flow unmounts nodes
+   * that fall outside the viewport. Zooming in around the centre can push the
+   * focused device off-screen, and unmounting it destroys the focused element —
+   * focus silently drops to <body>, the operator loses their position, and every
+   * subsequent shortcut stops working because focus is no longer inside the map.
+   *
+   * So: remember which device had focus, apply the change, pan that device back
+   * into view, and re-focus it once React has re-mounted it.
+   */
+  const preservingFocusedDevice = useCallback(
+    (change: () => void) => {
+      const focusedId =
+        document.activeElement?.closest('[data-id]')?.getAttribute('data-id') ?? null;
+
+      change();
+
+      if (!focusedId) return;
+      panIntoViewIfNeeded(focusedId);
+      // rAF so the re-render that re-mounts the node has committed to the DOM.
+      window.requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-id="${CSS.escape(focusedId)}"] [tabindex="0"]`);
+        if (el instanceof HTMLElement) el.focus();
+      });
+    },
+    [panIntoViewIfNeeded]
   );
 
   // Auto-pans on any keyboard-driven node focus (Tab included, not just our
@@ -178,7 +195,7 @@ export const useKeyboardNavigation = ({
           }
         }
       }
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+      if (ARROW_KEYS.includes(event.key as ArrowDirection)) {
         const activeElement = document.activeElement;
         const currentNodeElement = activeElement?.closest('[data-id]');
         if (currentNodeElement && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
@@ -190,13 +207,35 @@ export const useKeyboardNavigation = ({
 
           event.preventDefault();
 
-          const nextElement = document.querySelector(`[data-id="${nextNode.id}"] [tabindex="0"]`);
+          // Node ids come from ingested SNMP data and can contain characters that
+          // are significant in a selector, so escape before interpolating.
+          const nextElement = document.querySelector(
+            `[data-id="${CSS.escape(nextNode.id)}"] [tabindex="0"]`
+          );
           if (nextElement instanceof HTMLElement) {
             nextElement.focus();
             const label = nextNode.data.label || nextNode.id;
             setScreenReaderAnnouncement(`Focused on ${label}`);
           }
         }
+        return;
+      }
+
+      // Viewport shortcuts. "=" is handled alongside "+" because the unshifted key
+      // is what most layouts actually produce, and Kibana users expect both.
+      if (!isFocusWithinMap() || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key === '+' || event.key === '=') {
+        event.preventDefault();
+        preservingFocusedDevice(() => zoomIn());
+        setScreenReaderAnnouncement('Zoomed in');
+      } else if (event.key === '-') {
+        event.preventDefault();
+        preservingFocusedDevice(() => zoomOut());
+        setScreenReaderAnnouncement('Zoomed out');
+      } else if (event.key === '0') {
+        event.preventDefault();
+        preservingFocusedDevice(() => void fitView());
+        setScreenReaderAnnouncement('View reset to fit all devices');
       }
     };
 
@@ -204,7 +243,18 @@ export const useKeyboardNavigation = ({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [nodes, selectedDeviceId, onNodeSelect, onClose, findNodeInDirection]);
+  }, [
+    nodes,
+    selectedDeviceId,
+    onNodeSelect,
+    onClose,
+    findNodeInDirection,
+    isFocusWithinMap,
+    preservingFocusedDevice,
+    zoomIn,
+    zoomOut,
+    fitView,
+  ]);
 
   return {
     screenReaderAnnouncement,

@@ -13,19 +13,17 @@ import type { UnifiedSearchPublicPluginStart } from '@kbn/unified-search-plugin/
 import { KibanaRenderContextProvider } from '@kbn/react-kibana-context-render';
 import { KibanaContextProvider } from '@kbn/kibana-react-plugin/public';
 import { Router, Route } from '@kbn/shared-ux-router';
-import type { NetworkTopologyConfig } from '../server/config';
 import { NetworkTopologyApp } from './pages/app';
 
 export function renderApp(
   core: CoreStart,
   data: DataPublicPluginStart,
   unifiedSearch: UnifiedSearchPublicPluginStart,
-  { element, history }: AppMountParameters,
-  networkTopologyConfig: NetworkTopologyConfig
+  { element, history }: AppMountParameters
 ) {
   ReactDOM.render(
     <KibanaRenderContextProvider {...core}>
-      <KibanaContextProvider services={{ ...core, data, unifiedSearch, networkTopologyConfig }}>
+      <KibanaContextProvider services={{ ...core, data, unifiedSearch }}>
         <Router history={history}>
           <Route path="/" component={NetworkTopologyApp} />
         </Router>

@@ -29,8 +29,13 @@ import {
 import { css, keyframes } from '@emotion/react';
 import { DEVICE_TYPE_CONFIG, STATUS_EUI_COLORS } from '../../common';
 import type { TopologyNodeData } from '../utils/graph_to_react_flow';
+import { NODE_BOX_WIDTH, NODE_CIRCLE_SIZE } from '../utils/edge_geometry';
 
-const NODE_SIZE = 60;
+// Level-of-detail thresholds, carried over from the canvas renderer. Below these
+// zoom levels the text is too small to read anyway, and on a large topology it is
+// the dominant rendering cost — every label here is real DOM, not a canvas fill.
+const LABEL_MIN_ZOOM = 0.5;
+const IP_MIN_ZOOM = 0.8;
 
 // Pulses scale + opacity for down/degraded nodes.
 // Compositor-only properties (transform + opacity) — no layout or paint triggered.
@@ -61,6 +66,10 @@ export const TopologyReactFlowNode = memo(
     const multipleNodesSelected = useReactFlowStore(
       (s) => s.nodes.filter((n) => n.selected).length > 1
     );
+    // Selecting a boolean rather than the zoom value itself means a node only
+    // re-renders when it actually crosses a threshold, not on every zoom tick.
+    const showLabel = useReactFlowStore((s) => s.transform[2] > LABEL_MIN_ZOOM);
+    const showIp = useReactFlowStore((s) => s.transform[2] > IP_MIN_ZOOM);
     const isSelected = selected && !unmanaged && !multipleNodesSelected;
     const cfg = DEVICE_TYPE_CONFIG[data.type] ?? DEVICE_TYPE_CONFIG.unknown;
     const iconType = unmanaged ? 'question' : cfg.icon;
@@ -136,6 +145,9 @@ export const TopologyReactFlowNode = memo(
 
     const wrapperStyles = css`
       cursor: ${cursor};
+      /* Fixed width keeps edge anchors stable as the label/IP appear and disappear
+         with zoom — see NODE_BOX_WIDTH. */
+      width: ${NODE_BOX_WIDTH}px;
     `;
 
     const handleStyles = css`
@@ -143,8 +155,8 @@ export const TopologyReactFlowNode = memo(
     `;
 
     const circleStyles = css`
-      width: ${NODE_SIZE}px;
-      height: ${NODE_SIZE}px;
+      width: ${NODE_CIRCLE_SIZE}px;
+      height: ${NODE_CIRCLE_SIZE}px;
       border-radius: 50%;
       background: ${fillColor};
       opacity: ${unmanaged ? 0.7 : 1};
@@ -194,7 +206,7 @@ export const TopologyReactFlowNode = memo(
             css={handleStyles}
             isConnectable={false}
           />
-          {/* Left/right anchor to the circle's own vertical center (NODE_SIZE / 2
+          {/* Left/right anchor to the circle's own vertical center (NODE_CIRCLE_SIZE / 2
               from the node's top edge, where the circle starts) rather than RF's
               default — the whole node's midpoint — which would fall inside the
               label/IP text below the circle instead of on the device icon. */}
@@ -204,7 +216,7 @@ export const TopologyReactFlowNode = memo(
             position={Position.Left}
             css={handleStyles}
             isConnectable={false}
-            style={{ top: NODE_SIZE / 2 }}
+            style={{ top: NODE_CIRCLE_SIZE / 2 }}
           />
           <Handle
             type="source"
@@ -212,7 +224,7 @@ export const TopologyReactFlowNode = memo(
             position={Position.Right}
             css={handleStyles}
             isConnectable={false}
-            style={{ top: NODE_SIZE / 2 }}
+            style={{ top: NODE_CIRCLE_SIZE / 2 }}
           />
           <div
             css={circleStyles}
@@ -226,22 +238,28 @@ export const TopologyReactFlowNode = memo(
             <EuiIcon type={iconType} color={iconColor} size="l" aria-hidden={true} />
           </div>
         </EuiFlexItem>
-        <EuiFlexItem grow={false} aria-hidden="true">
-          <EuiTextTruncate text={data.label} width={120}>
-            {(truncatedLabel) => (
-              <EuiTitle size="xs">
-                <p css={labelStyles}>
-                  <EuiTextColor color={selected || previewVisible ? 'default' : 'subdued'}>
-                    {truncatedLabel}
-                  </EuiTextColor>
-                </p>
-              </EuiTitle>
-            )}
-          </EuiTextTruncate>
-        </EuiFlexItem>
-        {data.ip && (
+        {/* Text is hidden, not just shrunk, once zoomed far enough out to make it
+            unreadable — the device circles alone carry the shape of the topology.
+            Safe for screen readers: the circle's aria-label already names the
+            device, and these blocks are aria-hidden regardless. */}
+        {showLabel && (
           <EuiFlexItem grow={false} aria-hidden="true">
-            <EuiTextTruncate text={data.ip} width={120}>
+            <EuiTextTruncate text={data.label} width={NODE_BOX_WIDTH}>
+              {(truncatedLabel) => (
+                <EuiTitle size="xs">
+                  <p css={labelStyles}>
+                    <EuiTextColor color={selected || previewVisible ? 'default' : 'subdued'}>
+                      {truncatedLabel}
+                    </EuiTextColor>
+                  </p>
+                </EuiTitle>
+              )}
+            </EuiTextTruncate>
+          </EuiFlexItem>
+        )}
+        {showIp && data.ip && (
+          <EuiFlexItem grow={false} aria-hidden="true">
+            <EuiTextTruncate text={data.ip} width={NODE_BOX_WIDTH}>
               {(truncatedIp) => (
                 <EuiText size="xs" textAlign="center">
                   <p css={ipStyles}>{truncatedIp}</p>

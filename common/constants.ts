@@ -26,20 +26,31 @@ export const API_ROUTES = {
   SETUP_HEALTH: `${API_BASE}/setup/health`,
 } as const;
 
-export const DEVICE_TYPE_CONFIG: Record<string, { color: string; icon: string }> = {
+/**
+ * Names of the icons EUI actually ships, as a literal union.
+ *
+ * Typed rather than left as `string` because EuiIcon does not fail loudly on a name
+ * it doesn't know — it treats the value as an image URL and renders a broken image,
+ * so a typo or an icon that only exists in a newer EUI turns into a silently broken
+ * device on the map. Typing it moves that failure to `yarn type-check` and the IDE.
+ *
+ * Imported from the `src` path because that is what EUI's bundled ambient
+ * declarations are keyed on, and as `import type` so nothing reaches runtime — this
+ * module is shared with the server, which must not pull in browser code.
+ * `EuiIconType` is not re-exported from the package root, and the root's `IconType`
+ * is widened with `| string`, which would defeat the whole point.
+ */
+type EuiIconName = keyof typeof import('@elastic/eui/src/components/icon/icon_map').typeToPathMap;
+
+export const DEVICE_TYPE_CONFIG: Record<string, { color: string; icon: EuiIconName }> = {
   router: { color: '#0077CC', icon: 'node' },
   switch: { color: '#00BFB3', icon: 'layers' },
   firewall: { color: '#F5A623', icon: 'lock' },
   server: { color: '#9170B8', icon: 'compute' },
-  ap: { color: '#54B399', icon: 'wifi' },
+  // EUI has no 'wifi' glyph; 'securitySignal' is its radiating-signal icon and the
+  // closest available match for a wireless access point.
+  ap: { color: '#54B399', icon: 'securitySignal' },
   unknown: { color: '#98A2B3', icon: 'question' },
-};
-
-export const STATUS_COLORS: Record<string, string> = {
-  up: '#00BFB3',
-  down: '#BD271E',
-  degraded: '#F5A623',
-  unknown: '#98A2B3',
 };
 
 // A device is considered down if no SNMP data has arrived within this window.
@@ -48,7 +59,6 @@ export const DEVICE_DOWN_THRESHOLD_MS = 5 * 60 * 1000;
 
 // EUI semantic colour names for use with EUI components (EuiHealth, EuiIcon, EuiBadge, etc.).
 // These adapt automatically to Kibana's light/dark/high-contrast themes.
-// The hex constants above remain in place for the D3 canvas renderer.
 export const STATUS_EUI_COLORS: Record<string, string> = {
   up: 'success',
   down: 'danger',

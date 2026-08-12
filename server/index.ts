@@ -5,18 +5,11 @@
  * 2.0.
  */
 
-import type { PluginConfigDescriptor, PluginInitializerContext } from '@kbn/core/server';
-import { configSchema, type NetworkTopologyConfig } from './config';
+import type { PluginInitializerContext } from '@kbn/core/server';
 import { NetworkTopologyServerPlugin } from './plugin';
 
-export const config: PluginConfigDescriptor<NetworkTopologyConfig> = {
-  schema: configSchema,
-  exposeToBrowser: { useLegacyTopologyMap: true },
-};
-
-export function plugin(initializerContext: PluginInitializerContext<NetworkTopologyConfig>) {
+export function plugin(initializerContext: PluginInitializerContext) {
   return new NetworkTopologyServerPlugin(initializerContext);
 }
 
 export type { NetworkTopologyServerPlugin };
-export type { NetworkTopologyConfig } from './config';
