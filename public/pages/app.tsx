@@ -24,10 +24,19 @@ import {
 import { SiteOverview } from './site_overview';
 import { SegmentOverview } from './segment_overview';
 import { TopologyView } from './topology_view';
+import { ConnectionsView } from './connections_view';
 import { DeviceListView } from './device_list';
 import { SetupGuide } from './setup_guide';
 
-type ViewMode = 'overview' | 'topology' | 'devices' | 'setup';
+type ViewMode = 'overview' | 'topology' | 'connections' | 'devices' | 'setup';
+
+const TAB_LABELS: Record<ViewMode, string> = {
+  overview: 'Overview',
+  topology: 'Topology Map',
+  connections: 'Connections',
+  devices: 'Devices',
+  setup: 'Setup',
+};
 
 export const NetworkTopologyApp: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('overview');
@@ -113,15 +122,9 @@ export const NetworkTopologyApp: React.FC = () => {
         </EuiPageHeader>
 
         <EuiTabs>
-          {(['overview', 'topology', 'devices', 'setup'] as ViewMode[]).map((tab) => (
+          {(Object.keys(TAB_LABELS) as ViewMode[]).map((tab) => (
             <EuiTab key={tab} isSelected={viewMode === tab} onClick={() => setViewMode(tab)}>
-              {tab === 'overview'
-                ? 'Overview'
-                : tab === 'topology'
-                ? 'Topology Map'
-                : tab === 'devices'
-                ? 'Devices'
-                : 'Setup'}
+              {TAB_LABELS[tab]}
             </EuiTab>
           ))}
         </EuiTabs>
@@ -158,6 +161,9 @@ export const NetworkTopologyApp: React.FC = () => {
             to={end}
             refreshKey={refreshKey}
           />
+        )}
+        {viewMode === 'connections' && (
+          <ConnectionsView from={start} to={end} refreshKey={refreshKey} />
         )}
         {viewMode === 'devices' && (
           <DeviceListView site={scope.site} from={start} to={end} refreshKey={refreshKey} />
