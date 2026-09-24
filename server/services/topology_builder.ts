@@ -38,6 +38,8 @@ interface BuildOptions {
   role?: string;
   /** CIDR notation filter, e.g. "192.168.1.0/24" — includes devices with any interface IP in this range */
   cidr?: string;
+  /** When true, includes raw ES aggregation responses in `_debug.response`. */
+  debug?: boolean;
   logger: Logger;
 }
 
@@ -45,7 +47,9 @@ export async function buildTopologyFromArpMac(
   esClient: ElasticsearchClient,
   options: BuildOptions
 ): Promise<TopologyGraph> {
-  const { index, from, to, site, building, role, cidr, logger } = options;
+  const { index, from, to, site, building, role, cidr, debug = false, logger } = options;
+  const debugQueries: Record<string, object> = {};
+  const debugResponses: Record<string, object> = {};
 
   const filters: any[] = [{ range: { '@timestamp': { gte: from, lte: to } } }];
   if (site) filters.push({ term: { 'network.site': site } });
@@ -56,7 +60,7 @@ export async function buildTopologyFromArpMac(
   // since host.ip is always the management/polling address and may be on a different VLAN.
   // Pre-query ipAddrTable docs to get device names, then restrict all main queries by name.
   if (cidr) {
-    const ipAddrResult = await esClient.search({
+    const cidrQuery = {
       index,
       size: 0,
       query: {
@@ -68,7 +72,10 @@ export async function buildTopologyFromArpMac(
         },
       },
       aggs: { device_names: { terms: { field: 'host.name', size: 5000 } } },
-    });
+    };
+    debugQueries.cidrDeviceNames = cidrQuery;
+    const ipAddrResult = await esClient.search(cidrQuery);
+    if (debug) debugResponses.cidrDeviceNames = ipAddrResult.aggregations ?? {};
 
     const names: string[] = ((ipAddrResult.aggregations?.device_names as any)?.buckets ?? []).map(
       (b: any) => b.key as string
@@ -83,7 +90,7 @@ export async function buildTopologyFromArpMac(
   }
 
   // Step 1: Get all polled devices
-  const devicesResult = await esClient.search({
+  const devicesQuery = {
     index,
     size: 0,
     query: { bool: { filter: filters } },
@@ -113,7 +120,10 @@ export async function buildTopologyFromArpMac(
         },
       },
     },
-  });
+  };
+  debugQueries.devices = devicesQuery;
+  const devicesResult = await esClient.search(devicesQuery);
+  if (debug) debugResponses.devices = devicesResult.aggregations ?? {};
 
   const deviceBuckets = (devicesResult.aggregations?.devices as any)?.buckets || [];
   const deviceMap = new Map<
@@ -160,7 +170,7 @@ export async function buildTopologyFromArpMac(
   // Step 1b: Interface IP table — maps every interface IP to its device so OSPF/BGP
   // neighbor IPs (tunnel IPs, loopbacks used as Router IDs, etc.) resolve even when
   // they differ from host.ip (the management/polling address).
-  const ipAddrResult = await esClient.search({
+  const ipAddrQuery = {
     index,
     size: 0,
     query: { bool: { filter: [...filters, { exists: { field: 'ip_addr.address' } }] } },
@@ -170,7 +180,10 @@ export async function buildTopologyFromArpMac(
         aggs: { ips: { terms: { field: 'ip_addr.address', size: 1000 } } },
       },
     },
-  });
+  };
+  debugQueries.ifaceIps = ipAddrQuery;
+  const ipAddrResult = await esClient.search(ipAddrQuery);
+  if (debug) debugResponses.ifaceIps = ipAddrResult.aggregations ?? {};
 
   const ifaceIpToDevice = new Map<string, string>();
   for (const bucket of (ipAddrResult.aggregations?.by_device as any)?.buckets || []) {
@@ -183,7 +196,7 @@ export async function buildTopologyFromArpMac(
   }
 
   // Step 2: ARP tables
-  const arpResult = await esClient.search({
+  const arpQuery = {
     index,
     size: 0,
     query: { bool: { filter: [...filters, { exists: { field: 'arp.mac_addr' } }] } },
@@ -198,10 +211,13 @@ export async function buildTopologyFromArpMac(
         },
       },
     },
-  });
+  };
+  debugQueries.arp = arpQuery;
+  const arpResult = await esClient.search(arpQuery);
+  if (debug) debugResponses.arp = arpResult.aggregations ?? {};
 
   // Step 3: MAC/bridge forwarding tables
-  const macTableResult = await esClient.search({
+  const macTableQuery = {
     index,
     size: 0,
     query: { bool: { filter: [...filters, { exists: { field: 'mac_table.mac_addr' } }] } },
@@ -219,7 +235,10 @@ export async function buildTopologyFromArpMac(
         },
       },
     },
-  });
+  };
+  debugQueries.macTable = macTableQuery;
+  const macTableResult = await esClient.search(macTableQuery);
+  if (debug) debugResponses.macTable = macTableResult.aggregations ?? {};
 
   // Step 4: Infer adjacency
   const links: TopologyLink[] = [];
@@ -336,7 +355,7 @@ export async function buildTopologyFromArpMac(
   }
 
   // Step 5: BGP peer sessions — create links between BGP neighbors
-  const bgpResult = await esClient.search({
+  const bgpQuery = {
     index,
     size: 0,
     query: { bool: { filter: [...filters, { exists: { field: 'bgp_peer.remote_ip' } }] } },
@@ -354,7 +373,10 @@ export async function buildTopologyFromArpMac(
         },
       },
     },
-  });
+  };
+  debugQueries.bgp = bgpQuery;
+  const bgpResult = await esClient.search(bgpQuery);
+  if (debug) debugResponses.bgp = bgpResult.aggregations ?? {};
 
   const bgpBuckets = (bgpResult.aggregations?.by_device as any)?.buckets || [];
   for (const devBucket of bgpBuckets) {
@@ -416,7 +438,7 @@ export async function buildTopologyFromArpMac(
   }
 
   // Step 6: OSPF neighbor adjacencies — create links between OSPF neighbors
-  const ospfResult = await esClient.search({
+  const ospfQuery = {
     index,
     size: 0,
     query: { bool: { filter: [...filters, { exists: { field: 'ospf_neighbor.neighbor_ip' } }] } },
@@ -434,7 +456,10 @@ export async function buildTopologyFromArpMac(
         },
       },
     },
-  });
+  };
+  debugQueries.ospf = ospfQuery;
+  const ospfResult = await esClient.search(ospfQuery);
+  if (debug) debugResponses.ospf = ospfResult.aggregations ?? {};
 
   const ospfBuckets = (ospfResult.aggregations?.by_device as any)?.buckets || [];
   for (const devBucket of ospfBuckets) {
@@ -475,5 +500,24 @@ export async function buildTopologyFromArpMac(
       links.length
     } links (site=${site || 'all'})`
   );
-  return { nodes, links, discoveredAt: new Date().toISOString(), method: 'arp-mac' };
+  const graph: TopologyGraph = {
+    nodes,
+    links,
+    discoveredAt: new Date().toISOString(),
+    method: 'arp-mac',
+    _debug: {
+      request: {
+        index,
+        from,
+        to,
+        ...(site ? { site } : {}),
+        ...(building ? { building } : {}),
+        ...(role ? { role } : {}),
+        ...(cidr ? { cidr } : {}),
+        queries: debugQueries,
+      },
+      ...(debug ? { response: debugResponses } : {}),
+    },
+  };
+  return graph;
 }
