@@ -5,26 +5,29 @@
  * 2.0.
  */
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import type { InspectTab } from '../components/inspect_flyout';
 import {
+  EuiBadge,
+  EuiButtonEmpty,
+  EuiCallOut,
   EuiFlexGroup,
   EuiFlexItem,
-  EuiPanel,
-  EuiLoadingSpinner,
-  EuiCallOut,
-  EuiButtonEmpty,
-  EuiSpacer,
-  EuiText,
-  EuiBadge,
-  EuiSwitch,
-  EuiIconTip,
   EuiIcon,
+  EuiIconTip,
+  EuiLoadingSpinner,
+  EuiPanel,
+  EuiSpacer,
+  EuiSwitch,
+  EuiText,
 } from '@elastic/eui';
 import { useApi } from '../hooks/use_api';
 import type { TopologyGraph } from '../../common';
-import { DEVICE_TYPE_CONFIG } from '../../common';
+import { DEFAULT_SNMP_INDEX, DEVICE_TYPE_CONFIG } from '../../common';
 import { TopologyCanvas } from '../components/topology_canvas';
 import { DeviceFlyout } from '../components/device_flyout';
+import { InspectFlyout } from '../components/inspect_flyout';
+import { serializeTopologyGraph } from '../utils/serialize_graph';
 
 // Above this size, animations auto-disable to protect against perf cliffs on large graphs.
 // Single tunable — users can always override via the toolbar switch.
@@ -55,6 +58,8 @@ export const TopologyView: React.FC<Props> = ({
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
   // null = follow auto (off on large graphs, on otherwise). true/false = explicit user choice.
   const [animationsUserPref, setAnimationsUserPref] = useState<boolean | null>(null);
+  const [showInspect, setShowInspect] = useState(false);
+  const [debugResponse, setDebugResponse] = useState<object | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(0);
 
@@ -102,6 +107,15 @@ export const TopologyView: React.FC<Props> = ({
       cancelled = true;
     };
   }, [api, site, cidr, from, to, refreshKey]);
+
+  const handleInspect = useCallback(() => {
+    setShowInspect(true);
+    if (debugResponse !== null) return;
+    api
+      .fetchTopology({ site, cidr, from, to, debug: true })
+      .then((r) => setDebugResponse(r.graph._debug?.response ?? null))
+      .catch(() => setDebugResponse({}));
+  }, [debugResponse, api, site, cidr, from, to]);
 
   const handleNodeClick = useCallback(
     (id: string) => {
@@ -217,6 +231,11 @@ export const TopologyView: React.FC<Props> = ({
             )}
           </EuiFlexGroup>
         </EuiFlexItem>
+        <EuiFlexItem grow={false}>
+          <EuiButtonEmpty size="s" iconType="inspect" onClick={handleInspect}>
+            Inspect
+          </EuiButtonEmpty>
+        </EuiFlexItem>
       </EuiFlexGroup>
       <EuiSpacer size="m" />
       <div ref={containerRef}>
@@ -234,8 +253,41 @@ export const TopologyView: React.FC<Props> = ({
           )}
         </EuiPanel>
       </div>
+
       {selectedDevice && (
         <DeviceFlyout deviceId={selectedDevice} from={from} to={to} onClose={handleCloseFlyout} />
+      )}
+
+      {showInspect && (
+        <InspectFlyout
+          title={`Topology${site ? ` — ${site}` : ''}${cidr ? ` — ${cidr}` : ''}`}
+          onClose={() => setShowInspect(false)}
+          tabs={
+            [
+              {
+                id: 'request',
+                name: 'Request',
+                content: graph?._debug?.request ?? null,
+              },
+              {
+                id: 'response',
+                name: 'Response',
+                content: debugResponse,
+              },
+              {
+                id: 'graph',
+                name: 'Graph',
+                content: serializeTopologyGraph(graph, {
+                  index: DEFAULT_SNMP_INDEX,
+                  from,
+                  to,
+                  site,
+                  cidr,
+                }),
+              },
+            ] as InspectTab[]
+          }
+        />
       )}
     </>
   );

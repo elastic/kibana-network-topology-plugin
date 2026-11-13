@@ -11,6 +11,7 @@ import { registerSitesRoutes } from './sites';
 import { registerSegmentsRoutes } from './segments';
 import { registerDevicesRoutes } from './devices';
 import { registerSetupRoutes } from './setup';
+import { registerConnectionsRoutes } from './connections';
 
 export function registerRoutes(router: IRouter, logger: Logger) {
   registerTopologyRoutes(router, logger);
@@ -18,4 +19,5 @@ export function registerRoutes(router: IRouter, logger: Logger) {
   registerSegmentsRoutes(router, logger);
   registerDevicesRoutes(router, logger);
   registerSetupRoutes(router, logger);
+  registerConnectionsRoutes(router, logger);
 }
