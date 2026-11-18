@@ -13,6 +13,30 @@ its ECS compliance status, mapping type, and expected values.
 
 ---
 
+## Connections View Fields
+
+The Connections view aggregates over **any** index pattern selected in the data view picker. The fields below are the ones the built-in field-pair presets target, and the ones the node flyout uses to build Security app deep links. All are standard ECS fields — they are **not** written by this plugin.
+
+| Field | Type | ECS Status | Connections role | Security deep link |
+|-------|------|-----------|------------------|--------------------|
+| `source.ip` | ip | Core ECS | Left-hand side of the default `source.ip → destination.ip` pair | `app/security/network/ip/<value>/source/` |
+| `destination.ip` | ip | Core ECS | Right-hand side of the default pair | `app/security/network/ip/<value>/destination/` |
+| `client.ip` | ip | Core ECS | Left-hand side of the `client.ip → server.ip` preset | `app/security/network/ip/<value>/source/` |
+| `server.ip` | ip | Core ECS | Right-hand side of the `client.ip → server.ip` preset | `app/security/network/ip/<value>/destination/` |
+| `destination.port` | long | Core ECS | Right-hand side of the `source.ip → destination.port` preset — reveals scanner fan-out and service reach | *(no Security deep link for ports)* |
+| `host.name` | keyword | Core ECS | Left-hand side of the `host.name → destination.ip` preset; also used as a right-hand side | `app/security/hosts/name/<value>/` |
+| `user.name` | keyword | Core ECS | Left-hand side of the `user.name → host.name` preset | `app/security/users/name/<value>/` |
+| `network.bytes` | long | Core ECS | Summed per link via a `sum` sub-aggregation; drives link-width scaling | — |
+| `network.packets` | long | Core ECS | Summed per link via a `sum` sub-aggregation | — |
+
+> **Free-form pivoting.** Both field selectors in the Connections toolbar accept any aggregatable `ip`, `keyword`, or `long` field — the presets above are convenience shortcuts, not restrictions. The Security deep link in the flyout is only rendered when the active field matches one of the known ECS names in the table above; custom field names show the node ID as plain text.
+
+> **`multi_terms` is deliberately not used.** Nested `terms` aggregations are used instead. `multi_terms` materialises a composite key for every left×right combination and cannot use global ordinals, making it impractical on realistic flow data volumes.
+
+> **Group by (diversity field).** When a "Group by" field is configured in the toolbar, a three-level `terms` aggregation is used: `group → source → destination`. Source nodes are prefixed with `{group}::` internally so that the same IP address (e.g. `172.18.0.1`) in two different Docker networks appears as two distinct nodes coloured differently. Destination nodes remain ungrouped and are shared across groups, making cross-group communication naturally visible. The group field can be any aggregatable field — common choices: `observer.hostname`, `network.site`, or a customer-defined site/tenant identifier. Keep "Max groups" low (≤ 20) to avoid Elasticsearch `too_many_buckets_exception` errors.
+
+---
+
 ## Base Fields
 
 | Field | Type | ECS Status | Description | Example |

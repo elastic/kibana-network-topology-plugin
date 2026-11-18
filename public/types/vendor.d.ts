@@ -30,11 +30,15 @@ declare module 'd3-force' {
     LinkDatum extends SimulationLinkDatum<NodeDatum> | undefined
   > {
     force(name: string, force?: Force<NodeDatum, LinkDatum> | null): this;
+    /** Sets the current alpha — used for a warm restart on an existing layout. */
+    alpha(alpha: number): this;
     alphaDecay(decay: number): this;
     alphaTarget(target: number): this;
     on(typenames: string, listener: (this: Simulation<NodeDatum, LinkDatum>) => void): this;
     restart(): this;
     stop(): this;
+    /** Advances the simulation synchronously. Does not dispatch 'tick' events. */
+    tick(iterations?: number): this;
     nodes(): NodeDatum[];
   }
 
@@ -63,7 +67,7 @@ declare module 'd3-force' {
 
   export interface ForceCollide<NodeDatum extends SimulationNodeDatum>
     extends Force<NodeDatum, undefined> {
-    radius(r: number): this;
+    radius(r: number | ((d: NodeDatum) => number)): this;
   }
 
   export interface ForceX<NodeDatum extends SimulationNodeDatum>
@@ -78,9 +82,10 @@ declare module 'd3-force' {
     y(y: number | ((d: NodeDatum) => number)): this;
   }
 
-  export function forceSimulation<NodeDatum extends SimulationNodeDatum>(
-    nodes?: NodeDatum[]
-  ): Simulation<NodeDatum, undefined>;
+  export function forceSimulation<
+    NodeDatum extends SimulationNodeDatum,
+    LinkDatum extends SimulationLinkDatum<NodeDatum> | undefined = undefined
+  >(nodes?: NodeDatum[]): Simulation<NodeDatum, LinkDatum>;
   export function forceLink<
     NodeDatum extends SimulationNodeDatum,
     LinkDatum extends SimulationLinkDatum<NodeDatum>

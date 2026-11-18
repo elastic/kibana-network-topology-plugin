@@ -70,6 +70,89 @@ export interface TopologyGraph {
   links: TopologyLink[];
   discoveredAt: string;
   method: string;
+  _debug?: {
+    /** The ES query params and per-step search bodies that produced this graph. */
+    request: object;
+    /** Raw aggregation responses for each step. Only populated when `debug=true`. */
+    response?: object;
+  };
+}
+
+/**
+ * Which side of the configured field pair a connections node was seen on.
+ * A node that appears as both a source and a destination is 'both'.
+ */
+export type ConnectionRole = 'source' | 'destination' | 'both';
+
+export interface ConnectionsNode {
+  /** Field value, e.g. "10.1.2.3". Source nodes include a `{group}::` prefix when a groupField is active. */
+  id: string;
+  role: ConnectionRole;
+  /** Total doc_count across every link touching this node */
+  sessions: number;
+  /** Omitted when the metric field is absent from the index */
+  bytes?: number;
+  packets?: number;
+  /** Number of links touching this node */
+  degree: number;
+  /** Set on source nodes when a groupField is active; extracted from the `{group}::` id prefix. */
+  group?: string;
+}
+
+export interface ConnectionsLink {
+  /** `${source}→${target}` */
+  id: string;
+  source: string;
+  target: string;
+  sessions: number;
+  bytes?: number;
+  packets?: number;
+}
+
+export interface ConnectionsGraph {
+  nodes: ConnectionsNode[];
+  links: ConnectionsLink[];
+  /** True if the source or fan-out caps were hit — the graph is a top-N sample */
+  truncated: boolean;
+  /** Elasticsearch `took`, in ms */
+  took: number;
+  /**
+   * Always populated by the server. Contains the exact ES search body that
+   * produced this result, and — when `debug=true` is passed to the API —
+   * the raw aggregation buckets as well. Optional in the type for unit-test
+   * compatibility (`shapeConnectionsGraph` does not set it).
+   */
+  _debug?: {
+    request: object;
+    /** Only populated when `debug=true` is included in the API request. */
+    response?: object;
+  };
+}
+
+export interface ConnectionsRequest {
+  index: string;
+  /** Aggregatable field for the left-hand side of the pair, e.g. 'source.ip' */
+  srcField: string;
+  /** Aggregatable field for the right-hand side of the pair, e.g. 'destination.ip' */
+  dstField: string;
+  from: string;
+  to: string;
+  /** Optional KQL, parsed server-side */
+  kql?: string;
+  /** JSON-serialized `Filter[]` from the search bar */
+  filters?: string;
+  /** Top-N sources; clamped server-side */
+  maxSources: number;
+  /** Top-M destinations per source; clamped server-side */
+  maxDstPerSource: number;
+  /** Drop links below this session count */
+  minSessions: number;
+  /** Optional field to distinguish same-value entities across different network contexts (e.g. observer.hostname, network.site). Source nodes are prefixed `{group}::` when set. */
+  groupField?: string;
+  /** Top-K groups retained in the three-level aggregation. No hard cap — oversized requests surface the ES error. */
+  maxGroups?: number;
+  /** When true, includes the raw ES aggregation response in `_debug.response`. */
+  debug?: boolean;
 }
 
 export interface SiteHealth {
